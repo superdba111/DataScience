@@ -1,0 +1,1171 @@
+# Import modules
+import numpy as np
+import pandas as pd
+
+# Print missing values
+print(loan_data.isna().sum())
+
+# Drop rows with missing values
+dropNArows = loan_data.dropna(axis=0)
+
+# Print percentage of rows remaining
+print(dropNArows.shape[0]/loan_data.shape[0] * 100)
+
+# Drop columns with missing values
+dropNAcols = loan_data.dropna(axis=1)
+
+# Print percentage of columns remaining
+print(dropNAcols.shape[1]/loan_data.shape[1] * 100)
+
+# Fill missing values with zero
+loan_data_filled = loan_data.fillna(0)
+
+# Examine 'Credit Score' before
+print(loan_data['Credit Score'].describe())
+
+# Examine 'Credit Score' after
+print(loan_data_filled['Credit Score'].describe())
+
+-------------------------------------------------------------
+As you saw in the last exercise, deleting data can reduce your dataset by too much. In an interview context, this can lead to biased results of your machine learning model.
+
+A more dynamic way of handling missing values is by imputing them. There are a variety of ways of doing this in python, 
+but in this exercise you will be using the SimpleImputer() function from the sklearn.impute module on loan_data.
+
+You will then use pandas and numpy to convert the imputed dataset into a DataFrame
+
+--------------------------------------------------------------------------
+# Import imputer module
+from sklearn.impute import SimpleImputer
+
+# Subset numeric features: numeric_cols
+numeric_cols = loan_data.select_dtypes(include=[np.number])
+
+# Impute with mean
+imp_mean = SimpleImputer(strategy='mean')
+loans_imp_mean = imp_mean.fit_transform(numeric_cols)
+
+# Convert returned array to DataFrame
+loans_imp_meanDF = pd.DataFrame(loans_imp_mean, columns=numeric_cols.columns)
+
+# Check the DataFrame's info
+print(loans_imp_meanDF.info())
+
+---------------------https://scikit-learn.org/stable/modules/generated/sklearn.impute.IterativeImputer.html------------------------------------------------------------------
+you will probably be asked about more dynamic imputation techniques that rely on other features in the dataset.
+
+In this exercise, you'll practice a machine-learning based approach by imputing missing values as a function of remaining features using IterativeImputer() from sklearn.impute. 
+This is a multivariate imputer that estimates each feature from all of the others in a 'round-robin' fashion.
+
+------------------------------------------------------------------------------------------------------
+# Explicitly require this experimental feature
+from sklearn.experimental import enable_iterative_imputer
+# Now you can import normally from sklearn.impute
+from sklearn.impute import IterativeImputer
+
+# Subset numeric features: numeric_cols
+numeric_cols = loan_data.select_dtypes(include=[np.number])
+
+# Iteratively impute
+imp_iter = IterativeImputer(max_iter=5, sample_posterior=True, random_state=123)
+loans_imp_iter = imp_iter.fit_transform(numeric_cols)
+
+# Convert returned array to DataFrame
+loans_imp_iterDF = pd.DataFrame(loans_imp_iter, columns=numeric_cols.columns)
+
+# Check the DataFrame's info
+print(loans_imp_iterDF.info())
+
+-----------------------------------------------------------------------------------------------------------------------
+If the distribution of test data (not yet seen by the model) is significantly different than the distribution of the training data, what problems can occur?
+What transformations can be applied to data before passing them to an ML model and why should these transformations be performed?
+
+-If the test data has a different distribution than the training data used to build a model it will likely cause poor performance.
+-The Box-cox function transforms the data depending on the value of the lmbda keyword argument.
+press
+-Log transform can normalize a feature which demonstrates a non-Gaussian distribution.
+press
+
+--------------------------------------------you see the difference in plot, see how to avoid it in ch2-------------------------------------------------------------------------------
+In this exercise, you'll use functions from sklearn.model_selection as well as seaborn and matplotlib.pyplot to split loan_data into a training set and a test set, 
+as well as visualize their distributions to spot any discrepancies
+
+# Create `loan_data` subset: loan_data_subset
+loan_data_subset = loan_data[['Credit Score','Annual Income','Loan Status']]
+
+# Create train and test sets
+trainingSet, testSet = train_test_split(loan_data_subset, test_size=0.2, random_state=123)
+
+# Examine pairplots
+plt.figure()
+sns.pairplot(trainingSet, hue='Loan Status', palette='RdBu')
+plt.show()
+
+plt.figure()
+sns.pairplot(testSet, hue='Loan Status', palette='RdBu')
+plt.show()
+
+----------------------------------------------------------------------------------------------------------------------------------
+you compared the distributions of a training set and test set of loan_data. This is especially poignant in a machine learning interview because the distribution observed dictates 
+whether or not you need to use techniques which nudge your feature distributions toward a normal distribution so that normality assumptions are not violated.
+
+In this exercise, you will be using the log and power transformation from the scipy.stats module on the Years of Credit History feature of loan_data 
+along with the distplot() function from seaborn, which plots both its distribution and kernel density estimation.
+
+# Subset loan_data
+cr_yrs = loan_data['Years of Credit History']
+
+# Histogram and kernel density estimate
+plt.figure()
+sns.distplot(cr_yrs)
+plt.show()
+
+# Subset loan_data
+cr_yrs = loan_data['Years of Credit History']
+
+# Box-Cox transformation
+cr_yrs_log = boxcox(cr_yrs, lmbda=0.0)
+
+# Histogram and kernel density estimate
+plt.figure()
+sns.distplot(cr_yrs_log)
+plt.show()
+
+-----Transform 'Years of Credit History' using the Box-Cox square-root argument and plot its distribution and kde.------
+# Subset loan_data
+cr_yrs = loan_data['Years of Credit History']
+
+# Square root transform
+cr_yrs_sqrt = boxcox(cr_yrs, lmbda=0.5)
+
+# Histogram and kernel density estimate
+plt.figure()
+sns.distplot(cr_yrs_sqrt)
+plt.show()
+-----------------------------------------Outlier detection---------------------------------------------------------------------------------
+A very important aspect of preprocessing your data correctly is outlier detection. In machine learning interview questions, a common question is how to locate and process outliers. 
+An easy way to detect outliers is by visualizing them graphically.
+
+After finding and imputing missing data, finding and figuring out what to do about outliers is another necessary preprocessing step.
+
+There's a variety of packages that let you visualize outliers, but in this exercise, you will be using seaborn to plot univariate and
+ multivariate boxplots of selected columns of loan_data.
+
+# Import modules
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Univariate and multivariate boxplots
+fig, ax =plt.subplots(1,2)
+sns.boxplot(y=loan_data['Annual Income'], ax=ax[0])
+sns.boxplot(x='Loan Status', y='Annual Income', data=loan_data, ax=ax[1])
+plt.show()
+
+-------------------------------
+# Import modules
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Univariate and multivariate boxplots
+fig, ax =plt.subplots(1,2)
+sns.boxplot(y=loan_data['Monthly Debt'], ax=ax[0])
+sns.boxplot(x='Loan Status', y='Monthly Debt', data=loan_data, ax=ax[1])
+plt.show()
+
+----------------------------------
+# Import modules
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Univariate and multivariate boxplots
+fig, ax =plt.subplots(1,2)
+sns.boxplot(x=loan_data['Years of Credit History'], ax=ax[0])
+sns.boxplot(x='Loan Status', y='Years of Credit History', data=loan_data, ax=ax[1])
+plt.show()
+
+----------------------------------Handling outliers------------------------------------------------------------------------------------------------------------------
+In the last exercise, you learned how visualizing outliers could come in handy in a machine learning interview. Another convenient way for handling outliers is by calculating the Z-score which gives a threshold for outliers approximately +/-3 standard deviations away from the mean.
+
+In this exercise, you will use the scipy.stats module to calculate the Z-score using the stats.zscore() function and the mstats.winsorize() function to replace outliers using a technique called Winsorizing.
+
+Recall from the video lesson that those points above and/or below 1.5 times the IQR should be suspected as possible outliers. For the last step in this exercise, that value is 2120.
+
+# Print: before dropping
+print(numeric_cols.mean())
+print(numeric_cols.median())
+print(numeric_cols.max())
+
+# Create index of rows to keep
+idx = (np.abs(stats.zscore(numeric_cols)) < 3).all(axis=1)
+
+# Concatenate numeric and categoric subsets
+ld_out_drop = pd.concat([numeric_cols.loc[idx], categoric_cols.loc[idx]], axis=1)
+
+# Print: after dropping
+print(ld_out_drop.mean())
+print(ld_out_drop.median())
+print(ld_out_drop.max())
+
+--------------------------------------------------------------------------
+
+# Print: before winsorize
+print((loan_data['Monthly Debt']).mean())
+print((loan_data['Monthly Debt']).median())
+print((loan_data['Monthly Debt']).max())
+
+# Winsorize numeric columns
+debt_win = mstats.winsorize(loan_data['Monthly Debt'], limits=[0.05, 0.05])
+
+# Convert to DataFrame, reassign column name
+debt_out = pd.DataFrame(debt_win, columns=['Monthly Debt'])
+
+# Print: after winsorize
+print(debt_out.mean())
+print(debt_out.median())
+print(debt_out.max())
+
+--------------------------------------------------------------------------------
+
+# Print: before replace with median
+print((loan_data['Monthly Debt']).mean())
+print((loan_data['Monthly Debt']).median())
+print((loan_data['Monthly Debt']).max())
+
+# Find median
+median = loan_data.loc[loan_data['Monthly Debt'] < 2120, 'Monthly Debt'].median()
+loan_data['Monthly Debt'] = np.where(loan_data['Monthly Debt'] > 2120, median, loan_data['Monthly Debt'])
+
+# Print: after replace with median
+print((loan_data['Monthly Debt']).mean())
+print((loan_data['Monthly Debt']).median())
+print((loan_data['Monthly Debt']).max())
+
+-----------------------------------------------------------------------------------------------------------------------------
+
+# Subset features
+numeric_cols = loan_data.select_dtypes(include=[np.number])
+categoric_cols = loan_data.select_dtypes(include=[object])
+
+# Instantiate
+scaler = StandardScaler()
+
+# Fit and transform, convert to DF
+numeric_cols_scaled = scaler.fit_transform(numeric_cols)
+numeric_cols_scaledDF = pd.DataFrame(numeric_cols_scaled, columns=numeric_cols.columns)
+
+# Concatenate categoric columns to scaled numeric columns
+final_DF = pd.concat([categoric_cols, numeric_cols_scaledDF], axis=1)
+print(final_DF.head())
+
+------------------------------------------------Best feature subset---------------------------------------------------------------------------
+How do you select the optimal subset of independent variables in a regression model?
+
+As a reminder, filter methods rank features based on their statistical performance while wrapper, embedded and tree-based methods use a machine learning model to evaluate performance.
+
+Embedded methods, such as Lasso and Ridge Regression, are regularization methods that extract features that contribute the most during a given iteration and provide the best subset dependent on the penalty parameter.
+
+------------------------------------Filter and wrapper methods----------------------------------------------------------------
+Questions about reducing the dimensionality of a dataset are highly common in machine learning interviews. 
+One way to reduce the dimensionality of a dataset is by only selecting relevant features in your dataset.
+
+Here you'll practice a filter method on the diabetes DataFrame followed by 2 different styles of wrapper methods that include cross-validation. 
+You will be using pandas, matplotlib.pyplot and seaborn to visualize correlations, process your data and apply feature selection techniques to your dataset.
+
+The feature matrix with the dropped target variable column (progression) is loaded as X, while the target variable is loaded as y.
+
+Note that pandas, matplotlib.pyplot, and seaborn have already been imported to your workspace and aliased as pd, sns and plt, respectively.
+
+
+# Create correlation matrix and print it
+cor = diabetes.corr()
+print(cor)
+
+# Correlation matrix heatmap
+plt.figure()
+sns.heatmap(cor, annot=True, cmap=plt.cm.Reds)
+plt.show()
+
+# Correlation with output variable
+cor_target = abs(cor["progression"])
+
+# Selecting highly correlated features
+best_features = cor_target[cor_target > 0.5]
+print(best_features)
+
+------------------------------------------------------------------------------------------------------------------------------
+
+# Import modules
+from sklearn.svm import SVR
+from sklearn.feature_selection import RFECV
+
+# Instantiate estimator and feature selector
+svr_mod = SVR(kernel="linear")
+feat_selector = RFECV(svr_mod, cv=5)
+
+# Fit
+feat_selector = feat_selector.fit(X, y)
+
+# Print support and ranking
+print(feat_selector.support_)
+print(feat_selector.ranking_)
+print(X.columns)
+
+-------------------------------------------------------------------------------------------
+
+# Import modules
+from sklearn.linear_model import LarsCV
+
+# Drop feature suggested not important in step 2
+X = X.drop('sex', axis=1)
+
+# Instantiate
+lars_mod = LarsCV(cv=5, normalize=False)
+
+# Fit
+feat_selector = lars_mod.fit(X, y)
+
+# Print r-squared score and estimated alpha
+print(lars_mod.score(X, y))
+print(lars_mod.alpha_)
+
+---------------------------Feature selection through feature importance-----------------------------------------------------------------------
+------------------------------https://scikit-learn.org/stable/modules/feature_selection.html-----------------------------------------------
+
+# Import
+from sklearn.ensemble import RandomForestRegressor
+
+# Instantiate
+rf_mod = RandomForestRegressor(max_depth=2, random_state=123, 
+                               n_estimators=100, oob_score=True)
+
+# Fit
+rf_mod.fit(X, y)
+
+# Print
+print(diabetes.columns)
+print(rf_mod.feature_importances_)
+
+---------------------------------------------------------------------------------------------------------------------------
+# Import
+from sklearn.ensemble import ExtraTreesRegressor
+
+# Instantiate
+xt_mod = ExtraTreesRegressor()
+
+# Fit
+xt_mod.fit(X, y)
+
+# Print
+print(diabetes.columns)
+print(xt_mod.feature_importances_)
+
+-------------------------------------------https://towardsdatascience.com/regularization-in-machine-learning-76441ddcf99a-------------------------------------------------------------------
+Regularization, significantly reduces the variance of the model, without substantial increase in its bias
+One of the ways of avoiding overfitting is using cross validation, that helps in estimating the error over test set, and in deciding what parameters work best for your model.
+
+What techniques can be used to ensure you’re not overfitting the dataset for a regression model?
+Perform ElasticNet regression which uses l1-ratio regularization which is a combination of L1 and L2
+
+---------------------------------------------- lasso regularization-----------------------------------------------------------------
+the machine learning pipeline - importing modules, preprocessing steps, instantiating estimators, train/test split, cross validating, tuning hyperparameters, 
+then fitting, predicting and evaluating
+
+
+# Import modules
+from sklearn.linear_model import Lasso, LassoCV
+from sklearn.metrics import mean_squared_error
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=123, test_size=0.3)
+
+# Instantiate cross-validated lasso, fit
+lasso_cv = LassoCV(alphas=None, cv=10, max_iter=10000)
+lasso_cv.fit(X_train, y_train) 
+
+# Instantiate lasso, fit, predict and print MSE
+lasso = Lasso(alpha = lasso_cv.alpha_)
+lasso.fit(X_train, y_train)
+print(mean_squared_error(y_true=y_test, y_pred=lasso.predict(X_test)))
+
+-------------------------------------------Ridge regularization----------------------------------------------------------------------------------------------------------
+ Lasso uses the L1 norm corresponding to the penalty parameter and the absolute value of the coefficients. 
+Ridge regression performs L2 regularization, also known as L2-norm, which adds a penalty term to ordinary least squares using the penalty parameter 
+
+# Import modules
+from sklearn.linear_model import Ridge, RidgeCV
+from sklearn.metrics import mean_squared_error
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=123, test_size=0.3)
+
+# Instantiate cross-validated ridge, fit
+ridge_cv = RidgeCV(alphas=np.logspace(-6, 6, 13))
+ridge_cv.fit(X_train, y_train)
+
+# Instantiate ridge, fit, predict and print MSE
+ridge = Ridge(alpha = ridge_cv.alpha_)
+ridge.fit(X_train, y_train)
+print(mean_squared_error(y_true=y_test, y_pred=ridge.predict(X_test)))
+
+----------check https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.ElasticNetCV.html---------------------------------
+
+What features should be used to train a simple classifier?
+Additional features should be created with feature engineering and they should be used along with the original features that have the highest correlation with the target variable
+
+-------Fit and predict a Logistic Regression on loan_data with the target variable Loan Status as y and evaluate the trained model's accuracy score.
+# Create X matrix and y array
+X = loan_data.drop("Loan Status", axis=1)
+y = loan_data["Loan Status"]
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=123)
+
+# Instantiate
+logistic = LogisticRegression()
+
+# Fit
+logistic.fit(X_train, y_train)
+
+# Predict and print accuracy
+print(accuracy_score(y_true=y_test, y_pred=logistic.predict(X_test)))
+
+# Convert income: monthly_income
+monthly_income = loan_data["Annual Income"]/12
+
+# Make engineered feature, remove features used
+loan_data["dti_ratio"] = loan_data["Monthly Debt"]/monthly_income * 100
+loan_data = loan_data.drop(["Monthly Debt","Annual Income"], axis=1)
+
+# Replace target variable levels
+loan_data["Loan Status"] = loan_data["Loan Status"].replace({'Fully Paid': 0, 
+                                                             'Charged Off': 1})
+
+# One-hot encode categorical variables
+loan_data = pd.get_dummies(data=loan_data)
+
+# Print
+print(loan_data.head())
+
+----now the dataset is changed
+# Create X matrix and y array
+X = loans_dti.drop("Loan Status", axis=1)
+y = loans_dti["Loan Status"]
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=123)
+
+# Instantiate
+logistic_dti = LogisticRegression()
+
+# Fit
+logistic_dti.fit(X_train, y_train)
+
+# Predict and print accuracy
+print(accuracy_score(y_true=y_test, y_pred=logistic_dti.predict(X_test)))
+
+-----------------------------------Bootstrap aggregation (bagging)----------------------------------------------------------------------
+ it's sometimes worthwhile to know about ensemble models since they combine weak learners to create a strong learner that improves model accuracy.
+
+# Instantiate bootstrap aggregation model
+bagged_model = BaggingClassifier(n_estimators=50, random_state=123)
+
+# Fit
+bagged_model.fit(X_train, y_train)
+
+# Predict
+bagged_pred = bagged_model.predict(X_test)
+
+# Print accuracy score
+print(accuracy_score(y_test, bagged_pred))
+
+--------------------------------------------Boosting-----------------------------------------------------------------------------------------
+pandas as pd, train_test_split from sklearn.model_selection, accuracy_score from sklearn.linear_model, LogisticRegression from sklearn.linear_model, 
+and BaggingClassifier and AdaBoostClassifier from sklearn.ensemble.
+
+# Boosting model
+boosted_model = AdaBoostClassifier(n_estimators=50, random_state=123)
+
+# Fit
+boosted_fit = boosted_model.fit(X_train, y_train)
+
+# Predict
+boosted_pred = boosted_model.predict(X_test)
+
+# Print model accuracy
+print(accuracy_score(y_test, boosted_pred))
+
+--------------------------------------------------XG Boost--------------------------------------------------------------------------------
+XGBoost is an optimized distributed gradient boosting package that is "taking over the world!". That said, getting asked about it in a Machine Learning interview is likely or, 
+at the very least, would be to your benefit to discuss in one of your answers to display your knowledge of cutting-edge and highly accurate algorithms.
+
+pandas as pd, train_test_split from sklearn.model_selection, accuracy_score from sklearn.linear_model, LogisticRegression from sklearn.linear_model, 
+BaggingClassifier and AdaBoostClassifier from sklearn.ensemble, and XGBClassifier from xgboost
+
+# Instantiate
+xgb = XGBClassifier(random_state=123, learning_rate=0.1, n_estimators=10, max_depth=3)
+
+# Fit
+xgb_fit = xgb.fit(X_train, y_train)
+
+# Predict
+xgb_pred = xgb.predict(X_test)
+
+# Print accuracy score
+print('Final prediction score: [%.8f]' % accuracy_score(y_test, xgb_pred))
+
+-----------------------------------------------PCA--------------------------------------------------------------------------------------------------------
+How do PCA and SVD algorithms help overcome the curse of dimensionality?
+SVD decomposes the original data matrix into three matrices and returns singular values
+
+ you saw various instances about how to reduce the dimensionality of your dataset including regularization and feature selection. 
+It is important to be able to explain different aspects of reducing dimensionality in a machine learning interview. Large datasets take a long time to compute, 
+and noise in your data can bias your results.
+
+One way of reducing dimensionality is principal component analysis. It's an effective way of reducing the size of the data by creating new features 
+that preserve the most useful information on a dataset while at the same time removing multicollinearity. 
+
+# Import module
+from sklearn.decomposition import PCA
+
+# Feature matrix and target array
+X = diabetes.drop('progression', axis=1)
+y = diabetes['progression']
+
+# PCA
+pca = PCA(n_components=3)
+
+# Fit and transform
+principalComponents = pca.fit_transform(X)
+
+# Print ratio of variance explained
+print(pca.explained_variance_ratio_)
+--------------------------------------Singular value decomposition-----------------------------------------------------------------
+Recall that singular value decomposition takes the original data matrix, decomposes it into three matrices and uses them to calculate and return singular values.
+
+# Import module
+from sklearn.decomposition import TruncatedSVD
+
+# Feature matrix and target array
+X = diabetes.drop('progression', axis=1)
+y = diabetes['progression']
+
+# SVD
+svd = TruncatedSVD(n_components=3)
+
+# Fit and transform
+principalComponents = svd.fit_transform(X)
+
+# Print ratio of variance explained
+print(svd.explained_variance_ratio_)
+
+-------------------------------Visualization separation of classes with PCA I--------------------------------------------------------
+
+A common question you may receive in a machine learning interview is visualizing dimensionality after PCA. 
+In this exercise, you will do just that by plotting the first 2 principal components of loan_data in order to visualize the class separation 
+between both components on whether the loan status has been fully paid or charged off.
+
+The loan_data dataset has been scaled and one-hot encoded, meaning categorical variables were turned into binary indicators, 
+since features should be on the same scale as well as numeric prior to PCA.
+
+A PCA model with 2 PCs and setting up a plot with x and y labels and title has already been taken care of for you. 
+You'll use a DataFrame called loan_data_PCA in the exercises. The possible values for the target variable Loan Status are 0 and 1. 
+You'll be plotting PC1 on the x-axis and PC2 on the y-axis.
+
+targets = [0, 1]
+colors = ['r', 'b']
+
+# For loop to create plot
+for target, color in zip(targets,colors):
+    indicesToKeep = loan_data_PCA['Loan Status'] == target
+    ax.scatter(loan_data_PCA.loc[indicesToKeep, 'principal component 1']
+               , loan_data_PCA.loc[indicesToKeep, 'principal component 2']
+               , c = color
+               , s = 50)
+
+# Legend    
+ax.legend(targets)
+ax.grid()
+plt.show(
+
+-------------------------------------
+In a machine learning interview, you may be asked what is the optimum number of features to keep. 
+In this exercise you'll create a scree plot and a cumulative explained variance ratio plot of the principal components using PCA on loan_data. 
+This will help inform the optimal number of PCs for training a more accurate ML model going forward.
+
+Since PCA is an unsupervised method, that means principal component analysis is performed on the X matrix having removed the target variable Loan Status from the dataset. 
+Not setting n_components returns all the principal components from the trained model.
+
+# Remove target variable
+X = loan_data.drop('Loan Status', axis=1)
+
+# Instantiate
+pca = PCA(n_components=10)
+
+# Fit and transform
+principalComponents = pca.fit_transform(X)
+
+# List principal components names
+principal_components = ['PC1','PC2','PC3','PC4','PC5','PC6','PC7','PC8','PC9','PC10']
+
+# Create a DataFrame
+pca_df = pd.DataFrame({'Variance Explained': pca.explained_variance_ratio_,
+             'PC':principal_components})
+
+# Plot DataFrame
+sns.barplot(x='PC',y='Variance Explained', 
+           data=pca_df, color="c")
+plt.show()
+
+# Instantiate, fit and transform
+pca2 = PCA()
+principalComponents2 = pca2.fit_transform(X)
+
+# Assign variance explained
+var = pca2.explained_variance_ratio_
+
+# Plot cumulative variance
+cumulative_var = np.cumsum(var)*100
+plt.plot(cumulative_var,'k-o',markerfacecolor='None',markeredgecolor='k')
+plt.title('Principal Component Analysis',fontsize=12)
+plt.xlabel("Principal Component",fontsize=12)
+plt.ylabel("Cumulative Proportion of Variance Explained",fontsize=12)
+plt.show()
+
+----------------------------------------K-means clustering--------------------------------------------------------------------------------------------------
+In a machine learning interview setting, you might be asked how the output from K-means clustering might be used to assess its performance as the best algorithm.
+
+In this exercise you'll practice K-means clustering. Using the .inertia_ attribute to compare models with different numbers of clusters, k, 
+you'll then also use this information to assess cluster number in the next exercise.
+
+Recall that the target variable in the diabetes dataset is progression
+
+# Import module
+from sklearn.cluster import KMeans
+
+# Create feature matrix
+X = diabetes.drop("progression", axis=1)
+
+# Instantiate
+kmeans = KMeans(n_clusters=2, random_state=123)
+
+# Fit
+fit = kmeans.fit(X)
+
+# Print inertia
+print("Sum of squared distances for 2 clusters is", kmeans.inertia_)
+
+-------------------------
+
+# Import module
+from sklearn.cluster import KMeans
+
+# Create feature matrix
+X = diabetes.drop("progression", axis=1)
+
+# Instantiate
+kmeans = KMeans(n_clusters=5, random_state=123)
+
+# Fit
+fit = kmeans.fit(X)
+
+# Print inertia
+print("Sum of squared distances for 5 clusters is", kmeans.inertia_)
+
+-------------------------------
+
+# Import module
+from sklearn.cluster import KMeans
+
+# Create feature matrix
+X = diabetes.drop("progression", axis=1)
+
+# Instantiate
+kmeans = KMeans(n_clusters=10, random_state=123)
+
+# Fit
+fit = kmeans.fit(X)
+
+# Print inertia
+print("Sum of squared distances for 10 clusters is", kmeans.inertia_)
+
+---------------------------------
+
+# Import module
+from sklearn.cluster import KMeans
+
+# Create feature matrix
+X = diabetes.drop("progression", axis=1)
+
+# Instantiate
+kmeans = KMeans(n_clusters=20, random_state=123)
+
+# Fit
+fit = kmeans.fit(X)
+
+# Print inertia
+print("Sum of squared distances for 20 clusters is", kmeans.inertia_)
+
+---------------------------Hierarchical agglomerative clustering---------------------------------------------------------------
+
+In the last exercise, you saw how the number of clusters while performing K-means clustering could impact your results allowing you to discuss K-means in a machine learning interview.
+ However, another clustering model you can use is hierarchical agglomerative clustering. 
+In Python, you could derive the optimal number of clusters for this technique both visually and mathematically. You will the scipy and sklearn modules to do both.
+
+Recall that selecting the optimal number of clusters from a dendrogram depends on both the linkage criteria and distance threshold. 
+Here, you'll create a dendrogram with the X matrix from diabetes, then extend an imaginary line at length 1.50, counting the number of vertical lines 
+crossed to represent the optimal number of clusters for your hierarchical clustering algorithm going forward.
+
+Already imported for you are matplotlib.pyplot as plt, seaborn as sns, PCA from sklearn.decomposition
+
+# Import hierarchical clustering libraries
+import scipy.cluster.hierarchy as sch
+from sklearn.cluster import AgglomerativeClustering
+
+# Create dendrogram
+dendrogram = sch.dendrogram(sch.linkage(X, method='ward'))
+plt.show()
+
+# Create clusters and fit
+hc = AgglomerativeClustering(affinity = 'euclidean', linkage = 'ward')
+hc.fit(X)
+
+# Print number of clusters
+print(hc.n_clusters_)
+
+------------------------------------------------------------------------------------------------------------------------
+
+How do you decide on the optimal number of clusters in a partitive clustering algorithm such as K-Means?
+
+Once a K-means model has been trained on several values for k, both the elbow method and silhouette methods can be used to decide on the best value for the number of clusters.
+
+you will be using the silhoutte_score() function from sklearn.metrics on K-means algorithms ran on the diabetes DataFrame in order to perform the Silhouette method 
+for finding the optimal number of clusters. Note you will be using euclidian distance when calculating the score as it ensures comparability between it and the Elbow method
+
+# Import modules
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
+# Feature matrix
+X = diabetes.drop("progression", axis=1)
+
+# For loop
+for n_clusters in range(2,9):
+    kmeans = KMeans(n_clusters=n_clusters)
+    # Fit and predict your k-Means object
+    preds = kmeans.fit_predict(X)
+    score = silhouette_score(X, preds, metric='euclidean')
+    print ("For n_clusters = {}, silhouette score is {})".format(n_clusters, score))
+
+--------------------------------------------------------------------------------------------------------------------------
+
+The silhouette score and elbow methods provide validation to the results you see from each. In a machine learning interview setting, 
+you may get asked about one or the other but discussing the specifics of one in the context of the other would contribute greatly to your answer.
+
+In this exercise, for each k value, you will initialize a K-means model and use the inertia_ attribute to identify the sum of squared distances of samples 
+to the nearest cluster center that, when plotted, appears to be an 'elbow' in the plot.
+
+Recall in the last lesson that as the value of k increased, the value for inertia_ decreased.
+
+Already imported for you are matplotlib.pyplot as plt and KMeans from sklearn.cluster. The feature matrix X has also been created for you.
+
+# Create empty list
+sum_of_squared_distances = []
+
+# Create for loop
+for k in range(1,15):
+    kmeans = KMeans(n_clusters=k)
+    kmeans = kmeans.fit(X)
+    sum_of_squared_distances.append(kmeans.inertia_)
+
+# Plot
+plt.plot(range(1,15), sum_of_squared_distances, 'bx-')
+plt.xlabel('k')
+plt.ylabel('Sum of squared distances')
+plt.title('Elbow Method For Optimal k')
+plt.show()
+
+----------------------------------------Decision tree----------------------------------------------------------------------------------
+ you will delve into hyperparameter tuning for a decision tree on the loan_data dataset. Here you'll tune min_samples_split, 
+which is the minimum number of samples required to create an additional binary split, and max_depth, which is how deep you want to grow the tree. 
+The deeper a tree, the more splits and therefore captures more information about the data.
+
+The feature matrix X and the target label y have been imported for you
+
+# Import modules
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=123)
+
+# Instantiate, Fit, Predict
+loans_clf = DecisionTreeClassifier() 
+loans_clf.fit(X_train, y_train)
+y_pred = loans_clf.predict(X_test)
+
+# Evaluation metric
+print("Decision Tree Accuracy: {}".format(accuracy_score(y_test,y_pred)))
+
+------------------------------------------------------------------------------------------------------------------------------------------------
+# Import modules
+from sklearn.model_selection import GridSearchCV
+
+# Create the hyperparameter grid
+param_grid = {"criterion": ["gini"], "min_samples_split": [2, 10, 20], 
+              "max_depth": [None, 2, 5, 10]}
+
+# Instantiate classifier and GridSearchCV object: dtree_cv
+loans_clf = DecisionTreeClassifier()
+dtree_cv = GridSearchCV(loans_clf, param_grid, cv=5)
+fit = dtree_cv.fit(X_train, y_train)
+
+# Print the optimal parameters and best score
+print("Tuned Decision Tree Parameter: {}".format(dtree_cv.best_params_))
+print("Tuned Decision Tree Accuracy: {}".format(dtree_cv.best_score_))
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Import modules
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=123)
+
+# Instantiate, Fit, Predict
+loans_rf = RandomForestClassifier() 
+loans_rf.fit(X_train, y_train)
+y_pred = loans_rf.predict(X_test)
+
+# Evaluation metric
+print("Random Forest Accuracy: {}".format(accuracy_score(y_test,y_pred)))
+
+-----------------------Import the correct function to perform cross-validated grid search
+# Import modules
+from sklearn.model_selection import GridSearchCV
+
+# Create the hyperparameter grid
+param_grid = {"criterion": ["gini"], "min_samples_split": [2, 10, 20], 
+              "max_depth": [None, 2, 5, 10],"max_features": [10, 20, 30]}
+
+# Instantiate classifier and GridSearchCV, fit
+loans_rf = RandomForestClassifier()
+rf_cv = GridSearchCV(loans_rf, param_grid, cv=5)
+fit = rf_cv.fit(X_train, y_train)
+
+# Print the optimal parameters and best score
+print("Tuned Random Forest Parameter: {}".format(rf_cv.best_params_))
+print("Tuned Random Forest Accuracy: {}".format(rf_cv.best_score_))
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+You are given a data set on detecting weapons at major US airports and have built a classification model with an accuracy of 99%. 
+Why should you question the performance of the model? How should you proceed to ensure the model is indeed performing well?
+
+When a dataset has imbalanced classes, a low precision score indicates a high number of false positives, 
+so consider trying different classification algorithms and/or resampling techniques to improve precision
+
+A low precision score indicates that there are too many false positives, bringing the calculation down. 
+Seeking to reduce the number of false positives to increase the precision can be accomplished with trying different classification algorithms and/or resampling techniques.
+
+----------------------Imbalanced class metrics
+Class imbalance is something that can hamper your model's performance in any machine learning context. This is especially relevant in a machine learning interview 
+if you are asked what to do if you are given a dataset with an imbalanced class, as some data is imbalanced by design such as insurance fraud data.
+
+In this exercise you'll use sklearn to create a logistic regression model and print the confusion matrix along with several evaluation metrics to get a better understanding 
+of how to interpret Machine Learning models from datasets that have a class imbalance.
+
+Recall the class imbalance you saw previously in loan_data. The number of observations with Loan Status of Fully Paid far outweighs those that are Charged Off:
+
+# Import
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+
+# Instantiate, fit, predict
+lr = LogisticRegression(solver='liblinear')
+lr.fit(X_train, y_train)
+y_pred = lr.predict(X_test)
+
+# Print evaluation metrics
+print("Confusion matrix:\n {}".format(confusion_matrix(y_test, y_pred)))
+print("Accuracy: {}".format(accuracy_score(y_test, y_pred)))
+print("Precision: {}".format(precision_score(y_test, y_pred)))
+print("Recall: {}".format(recall_score(y_test, y_pred)))
+print("F1: {}".format(f1_score(y_test, y_pred)))
+
+
+----------------------------------------------------------------------------------------------------------
+In the last exercise, you saw how class imbalance can impact the results of your confusion matrix. 
+In this exercise, you'll practice resampling techniques to explore the different results that alternative resampling styles can have on a dataset with class imbalance like 
+that seen with loan_data. Using sklearn's resample() function, matching the number of rows in the majority class is called upsampling, while matching the number of rows 
+in the minority class is called downsampling.
+
+You will create both an upsampled and downsampled version of the loan_data dataset, apply a logistic regression on both of them and then evaluate your performance. 
+The training data and its labels that correspond to deny are subset to contain only the minority class and to approve that correspond to the majority.
+
+A train/test split testing object for making predictions has been saved to the workspace as X_test for your use in the exercises.
+
+
+# Upsample minority and combine with majority
+loans_upsampled = resample(deny, replace=True, n_samples=len(approve), random_state=123)
+upsampled = pd.concat([approve, loans_upsampled])
+
+# Downsample majority and combine with minority
+loans_downsampled = resample(approve, replace = False,  n_samples = len(deny), random_state = 123)
+downsampled = pd.concat([loans_downsampled, deny])
+
+# Upsampled feature matrix and target array
+X_train_up = upsampled.drop('Loan Status', axis=1)
+y_train_up = upsampled['Loan Status']
+
+# Instantiate logistic regression, fit, predict
+loan_lr_up = LogisticRegression(solver='liblinear')
+loan_lr_up.fit(X_train_up, y_train_up)
+upsampled_y_pred = loan_lr_up.predict(X_test)
+
+# Print evaluation metrics
+print("Confusion matrix:\n {}".format(confusion_matrix(y_test, upsampled_y_pred)))
+print("Accuracy: {}".format(accuracy_score(y_test, upsampled_y_pred)))
+print("Precision: {}".format(precision_score(y_test, upsampled_y_pred)))
+print("Recall: {}".format(recall_score(y_test, upsampled_y_pred)))
+print("F1: {}".format(f1_score(y_test, upsampled_y_pred)))
+
+# Downsampled feature matrix and target array
+X_train_down = downsampled.drop('Loan Status', axis=1)
+y_train_down = downsampled['Loan Status']
+
+# Instantiate, fit, predict
+loan_lr_down = LogisticRegression(solver='liblinear')
+loan_lr_down.fit(X_train_down, y_train_down)
+downsampled_y_pred = loan_lr_down.predict(X_test)
+
+# Print evaluation metrics
+print("Confusion matrix:\n {}".format(confusion_matrix(y_test, downsampled_y_pred)))
+print("Accuracy: {}".format(accuracy_score(y_test, downsampled_y_pred)))
+print("Precision: {}".format(precision_score(y_test, downsampled_y_pred)))
+print("Recall: {}".format(recall_score(y_test, downsampled_y_pred)))
+print("F1: {}".format(f1_score(y_test, downsampled_y_pred)))
+
+-------------------------------------------Multicollinearity techniques - feature engineering---------------------------------------------------------------------
+After careful exploratory data analysis, you realize that your baseline regression model suffers from multicollinearity.
+ How would you check if that is true or not? Without losing any information, can you build a better baseline model?
+
+--Create a correlation matrix and/or heatmap, then engineer features to combine multicollinear independent variables,
+ making sure to remove the individual features used to create any new features.
+
+--Create a correlation matrix and/or heatmap, then perform Ridge regression to penalize multicollinear independent variables and perform feature selection for modeling.
+
+--Create a correlation matrix and/or heatmap, then perform PCA to combine multicollinear independent variables as new principal components.
+
+Multicollinearity is a common issue that might affect your performance in any machine learning context. Knowing how to discuss this small detail could take your explanation of modeling from good to great and really set you apart in an interview.
+
+In this exercise, you'll practice creating a baseline model using Linear Regression on the diabetes dataset and explore some of the output metrics. Then you'll practice techniques to visually explore the correlation between the independent variables before finally perform feature engineering on 2 variables that are highly correlated.
+
+For the first two steps, use X_train, X_test, y_train, and y_test which have been imported to your workspace.
+
+Additionally, all relevant packages have been imported for you: pandas as pd, train_test_split from sklearn.model_selection, LinearRegression from sklearn.linear_model, mean_squared_error and r2_score from sklearn.metrics, matplotlib.pyplot as plt and seaborn as sns
+
+# Instantiate, fit, predict
+lin_mod = LinearRegression()
+lin_mod.fit(X_train, y_train)
+y_pred = lin_mod.predict(X_test)
+
+# Coefficient estimates
+print('Coefficients: \n', lin_mod.coef_)
+
+# Mean squared error
+print("Mean squared error: %.2f"
+      % mean_squared_error(y_test, y_pred))
+
+# Explained variance score
+print('R_squared score: %.2f' % r2_score(y_test, y_pred))
+
+# Correlation matrix
+diab_corr = diabetes.corr()
+
+# Generate correlation heatmap
+ax = sns.heatmap(diab_corr, center=0, cmap=sns.diverging_palette(20,220, n=256), square=True)
+ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+plt.show()
+
+# Print correlations
+print(diab_corr)
+
+# Feature engineering
+diabetes['s1_s2'] = diabetes['s1'] * diabetes['s2']
+diabetes = diabetes.drop(['s1','s2'], axis=1)
+
+# Print variable names
+print(diabetes.columns)
+
+# Train/test split
+X2 = diabetes.drop('progression', axis=1)
+y2 = diabetes['progression']
+X_train2, X_test2, y_train2, y_test2 = train_test_split(X2, y2, test_size=0.3, random_state=123)
+
+# Instantiate, fit, predict
+lin_mod2 = LinearRegression()
+lin_mod2.fit(X_train2, y_train2)
+y_pred2 = lin_mod2.predict(X_test2)
+
+# Coefficient estimates
+print('Coefficients: \n', lin_mod2.coef_)
+
+# Mean squared error
+print("Mean squared error: %.2f"
+      % mean_squared_error(y_test2, y_pred2))
+
+# Explained variance score
+print('R_squared score: %.2f' % r2_score(y_test2, y_pred2))
+
+--------------------------------------------------------------------------------------------------------------
+In the last exercise you used feature engineering to combine the s1 and s2 independent variables as s1_s2 since they displayed the highest correlation in the diabetes dataset.
+
+In this exercise, you'll perform PCA on diabetes to remove multicollinearity before you apply Linear Regression to it. 
+Then, you'll compare the output metrics to those from the last exercise. Finally, you'll visualize what the correlation matrix and heatmap of the dataset looks like 
+since PCA completely removes multicollinearity.
+
+# Import
+from sklearn.decomposition import PCA
+
+# Instantiate
+pca = PCA()
+
+# Fit on train
+pca.fit(X_train)
+
+# Transform train and test
+X_trainPCA = pca.transform(X_train)
+X_testPCA = pca.transform(X_test)
+---------------------------------------
+# Import
+from sklearn.linear_model import LinearRegression
+
+# Instantiate, fit, predict
+LinRegr = LinearRegression()
+LinRegr.fit(X_trainPCA, y_train)
+predictions = LinRegr.predict(X_testPCA)
+
+# The coefficients
+print('Coefficients: \n', LinRegr.coef_)
+
+# The mean squared error
+print("Mean squared error: %.2f" % mean_squared_error(y_test, predictions))
+
+# Explained variance score: 1 is perfect prediction
+print('Variance score: %.2f' % r2_score(y_test, predictions))
+
+--------------------
+# Correlation matrix
+X_trainPCA = pd.DataFrame(X_trainPCA)
+diab_corrPCA = X_trainPCA.corr()
+
+# Generate correlation heatmap
+ax = sns.heatmap(diab_corrPCA, center=0, cmap=sns.diverging_palette(20,220, n=256), square=True)
+ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+plt.show()
+
+# Print correlations
+print(diab_corrPCA)
+
+---------------------------------------------------------------------------------------------------
+What are the main similarities and differences of Random Forest (RF) and Gradient Boosting (GB)algorithms?
+--Random Forest and Gradient Boosting machine learning techniques create multiple random samples that are used to produce a final prediction model.
+--Random Forest uses the bootstrapping method while Gradient Boosting uses weights given to incorrectly predicted observations from a previous sample applied to subsequent samples.
+--The final prediction of Random Forest uses a decision tree and is an average of all generated bootstrap samples, 
+while the final prediction of Gradient Boosting is a weighted average of the generated weak learners and can use any algorithm.
+
+Questions about ensemble models are common in a machine learning interview. If you're provided with a dataset and asked to build a highly accurate model, you will likely want to consider these more complex models.
+
+Your challenge in the remainder of this last lesson in the course is to create and compare two different ensemble models for loan_data.
+
+In this exercise, you will create a Random Forest Classifier model and compare its performance metrics to the model in the next exercise.
+
+The data has already been split is available in your workspace as X_train, X_test, y_train, and y_test.
+
+# Import
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+
+# Instantiate, fit, predict
+rf_model = RandomForestClassifier(n_estimators=50, random_state=123, oob_score = True)
+rf_fit = rf_model.fit(X_train, y_train)
+rf_pred = rf_model.predict(X_test)
+
+# Print evaluation metrics
+print("Random Forest Accuracy: {}".format(accuracy_score(y_test, rf_pred)))
+print("Confusion matrix:\n {}".format(confusion_matrix(y_test, rf_pred)))
+print("Precision: {}".format(precision_score(y_test, rf_pred)))
+print("Recall: {}".format(recall_score(y_test, rf_pred)))
+print("F1: {}".format(f1_score(y_test, rf_pred)))
+
+----------------------------Gradient boosting ensemble------------------------------------------------------
+Boosting is a technique where the error of one predictor is passed as input to the next in a sequential manner. 
+Gradient Boosting uses a gradient descent procedure to minimize the log loss 
+for each subsequent classification tree added one at a time that, on their own, are weak decision models.
+ Gradient Boosting for regression is similar, but uses a loss function such as mean squared error applied to gradient descent.
+
+## Import
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
+
+# Instantiate, fit, predict
+gb_model = GradientBoostingClassifier(n_estimators=50, learning_rate=0.01,random_state=123)
+gb_fit = gb_model.fit(X_train, y_train)
+gb_pred = gb_model.predict(X_test)
+
+# Print evaluation metrics
+print("Gradient Boosting Accuracy: {}".format(accuracy_score(y_test, gb_pred)))
+print("Confusion matrix:\n {}".format(confusion_matrix(y_test, gb_pred)))
+print("Precision: {}".format(precision_score(y_test, gb_pred)))
+print("Recall: {}".format(recall_score(y_test, gb_pred)))
+print("F1: {}".format(f1_score(y_test, gb_pred)))
+
+-------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
