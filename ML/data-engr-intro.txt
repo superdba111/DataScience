@@ -1,0 +1,563 @@
+From task to subtasks
+For this exercise, you will be using parallel computing to apply the function take_mean_age() 
+that calculates the average athlete's age in a given year in the Olympics events dataset. The DataFrame athlete_events has been loaded for you and contains amongst others,
+ two columns:
+
+Year: the year the Olympic event took place
+Age: the age of the Olympian
+You will be using the multiprocessor.Pool API which allows you to distribute your workload over several processes. 
+The function parallel_apply() is defined in the sample code. It takes in as input the function being applied, the grouping used, and the number of cores needed for the analysis. 
+Note that the @print_timing decorator is used to time each operation.
+
+# Function to apply a function over multiple cores
+@print_timing
+def parallel_apply(apply_func, groups, nb_cores):
+    with Pool(nb_cores) as p:
+        results = p.map(apply_func, groups)
+    return pd.concat(results)
+
+# Parallel apply using 1 core
+parallel_apply(take_mean_age, athlete_events.groupby('Year'), 1)
+
+# Parallel apply using 2 cores
+parallel_apply(take_mean_age, athlete_events.groupby('Year'), 2)
+
+# Parallel apply using 4 cores
+parallel_apply(take_mean_age, athlete_events.groupby('Year'), 4)
+
+
+For educational purposes, we've used a little trick here to make sure the parallelized version runs faster. In reality, using parallel computing wouldn't make sense here since the computations are simple and the dataset is relatively small. Communication overhead costs the multiprocessing version its edge
+
+------------------------------------------------------------------------------------------------------------------------------------------
+
+Using a DataFrame
+In the previous exercise, you saw how to split up a task and use the low-level python multiprocessing.Pool API to do calculations on several processing units.
+
+It's essential to understand this on a lower level, but in reality, you'll never use this kind of APIs. A more convenient way to parallelize an apply over several groups is using the dask framework and its abstraction of the pandas DataFrame, for example.
+
+The pandas DataFrame, athlete_events is available in your workspace.
+
+Create 4 partitions of the athletes_events DataFrame using dd.from_pandas()
+
+The npartitions argument allows you to set the number of partitions
+
+import dask.dataframe as dd
+
+# Set the number of pratitions
+athlete_events_dask = dd.from_pandas(athlete_events, npartitions = 4)
+
+-----------------------------
+--Print out the mean age for each Year. Remember dask uses lazy evaluation
+--Using the DataFrame abstraction makes parallel computing easier.
+
+import dask.dataframe as dd
+
+# Set the number of pratitions
+athlete_events_dask = dd.from_pandas(athlete_events, npartitions = 4)
+
+# Calculate the mean Age per Year
+print(athlete_events_dask.groupby('Year').Age.mean().compute())
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+A PySpark groupby
+You've seen how to use the dask framework and its DataFrame abstraction to do some calculations. However, as you've seen in the video, in the big data world Spark is probably a more popular choice for data processing.
+
+In this exercise, you'll use the PySpark package to handle a Spark DataFrame. The data is the same as in previous exercises: participants of Olympic events between 1896 and 2016.
+
+The Spark Dataframe, athlete_events_spark is available in your workspace.
+
+The methods you're going to use in this exercise are:
+
+.printSchema(): helps print the schema of a Spark DataFrame.
+.groupBy(): grouping statement for an aggregation.
+.mean(): take the mean over each group.
+.show(): show the results.
+
+
+# Print the type of athlete_events_spark
+print(type(athlete_events_spark))
+
+# Print the schema of athlete_events_spark
+print(athlete_events_spark.printSchema())
+
+# Group by the Year, and find the mean Age
+print(athlete_events_spark.groupBy('Year').mean('Age'))
+
+# The same, but now show the results
+print(athlete_events_spark.groupBy('Year').mean('Age').show())
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------
+repl:~$ cat /home/repl/spark-script.py
+from pyspark.sql import SparkSession
+
+
+if __name__ == "__main__":
+    spark = SparkSession.builder.getOrCreate()
+    athlete_events_spark = (spark
+        .read
+        .csv("/home/repl/datasets/athlete_events.csv",
+             header=True,
+             inferSchema=True,
+             escape='"'))
+
+    athlete_events_spark = (athlete_events_spark
+        .withColumn("Height",
+                    athlete_events_spark.Height.cast("integer")))
+
+    print(athlete_events_spark
+        .groupBy('Year')
+        .mean('Height')
+        .orderBy('Year')
+        .show())
+
+spark-submit \
+  --master local[4] \
+  /home/repl/spark-script.py
+
+------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Airflow DAGs
+In Airflow, a pipeline is represented as a Directed Acyclic Graph or DAG. The nodes of the graph represent tasks that are executed. 
+The directed connections between nodes represent dependencies between the tasks.
+
+Representing a data pipeline as a DAG makes much sense, as some tasks need to finish before others can start. 
+You could compare this to an assembly line in a car factory. The tasks build up, and each task can depend on previous tasks being finished. 
+A fictional DAG could look something like this:
+
+Example DAG
+
+Assembling the frame happens first, then the body and tires and finally you paint. Let's reproduce the example above in code.
+
+--First, the DAG needs to run on every hour at minute 0. Fill in the schedule_interval keyword argument using the crontab notation. 
+--For example, every hour at minute N would be N * * * *. Remember, you need to run at minute 0.
+--For the schedule_interval keyword, you can use the example you saw to start with (30 * * * *). You only have to change the first value
+
+# Create the DAG object
+dag = DAG(dag_id="car_factory_simulation",
+          default_args={"owner": "airflow","start_date": airflow.utils.dates.days_ago(2)},
+          schedule_interval="0 * * * *")
+
+# Task definitions
+assemble_frame = BashOperator(task_id="assemble_frame", bash_command='echo "Assembling frame"', dag=dag)
+place_tires = BashOperator(task_id="place_tires", bash_command='echo "Placing tires"', dag=dag)
+assemble_body = BashOperator(task_id="assemble_body", bash_command='echo "Assembling body"', dag=dag)
+apply_paint = BashOperator(task_id="apply_paint", bash_command='echo "Applying paint"', dag=dag)
+
+# Complete the downstream flow
+assemble_frame.set_downstream(place_tires)
+assemble_frame.set_downstream(assemble_body)
+assemble_body.set_downstream(apply_paint)
+
+-------------------------------------------------------------------------------------------------------------------------------------
+--Fetch from an API
+
+import requests
+
+# Fetch the Hackernews post
+resp = requests.get("https://hacker-news.firebaseio.com/v0/item/16222426.json")
+
+# Print the response parsed as JSON
+print(resp.json())
+
+# Assign the score of the test to post_score
+post_score = resp.json()["score"]
+print(post_score)
+
+--------------------------------------------------------------------------------------------------------------------------------------------
+--Read from a database
+
+You'll be creating and using a function that extracts a database table into a pandas DataFrame object. The tables you'll be extracting are:
+
+film: the films that are rented out in the DVD store.
+customer: the customers that rented films at the DVD store.
+In order to connect to the database, you'll have to use a PostgreSQL connection URI, which looks something like this:
+
+postgresql://[user[:password]@][host][:port][/database]
+
+-----------------
+# Function to extract table to a pandas DataFrame
+def extract_table_to_pandas(tablename, db_engine):
+    query = "SELECT * FROM {}".format(tablename)
+    return pd.read_sql(query, db_engine)
+
+# Connect to the database using the connection URI
+connection_uri = "postgresql://repl:password@localhost:5432/pagila" 
+db_engine = sqlalchemy.create_engine(connection_uri)
+
+# Extract the film table into a pandas DataFrame
+extract_table_to_pandas("film", db_engine)
+
+# Extract the customer table into a pandas DataFrame
+extract_table_to_pandas("customer", db_engine)
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+Splitting the rental rate
+In the last exercise, you saw how to use pandas to split the email address column of the film table in order to extract the users' domain names. 
+Suppose you would want to have a better understanding of the rates users pay for movies, so you decided to divide the rental_rate column into dollars and cents.
+
+In this exercise, you will use the same techniques used in the video exercises to do just that! The film table has been loaded into the pandas DataFrame film_df. 
+Remember, the goal is to split up the rental_rate column into dollars and cents.
+
+
+# Get the rental rate column as a string
+rental_rate_str = film_df.rental_rate.astype("str")
+
+# Split up and expand the column
+rental_rate_expanded = rental_rate_str.str.split(".", expand=True)
+
+# Assign the columns to film_df
+film_df = film_df.assign(
+    rental_rate_dollar=rental_rate_expanded[0],
+    rental_rate_cents=rental_rate_expanded[1],
+)
+
+-----------------------------------------------------------------------------------------------------------
+before you can do transformations using PySpark, you need to get the data into the Spark framework. You saw how to do this using PySpark. Can you choose the correct code?
+spark.read.jdbc("jdbc:postgresql://localhost:5432/pagila",
+                "customer",
+                {"user":"repl","password":"password"})
+
+------------------------------------------------------------------------------------------------------------
+In this exercise, you're going to create more synergies between the film and ratings tables by using the same techniques you learned in the last exercise 
+to calculate the average rating for every film.
+
+The PySpark DataFrame with films, film_df and the PySpark DataFrame with ratings, ratings_df, are available in your workspace.
+
+# Use groupBy and mean to aggregate the column
+ratings_per_film_df = rating_df.groupBy('film_id').mean('rating')
+
+# Join the tables using the film_id column
+film_df_with_ratings = film_df.join(
+    ratings_per_film_df,
+    film_df.film_id==ratings_per_film_df.film_id
+)
+
+# Show the 5 first results
+print(film_df_with_ratings.show(5))
+
+-------------------------------------------------Writing to a file------------------------------------------------------------------------------------------------------
+
+The typical workflow is to write the data into columnar data files. These data files are then uploaded to a storage system and from there, they can be copied into the data warehouse. In case of Amazon Redshift, the storage system would be S3, for example.
+
+The first step is to write a file to the right format. For this exercises you'll choose the Apache Parquet file format.
+
+There's a PySpark DataFrame called film_sdf and a pandas DataFrame called film_pdf in your workspace.
+
+# Write the pandas DataFrame to parquet
+film_pdf.to_parquet("films_pdf.parquet")
+
+# Write the PySpark DataFrame to parquet
+film_sdf.write.parquet("films_sdf.parquet")
+
+---------------------------------------------------Load into Postgres----------------------------------------------------------------------------------------------------------------
+For example, the result of a transformation could have added a column with film recommendations, and you want to use them in your online store.
+
+There's a pandas DataFrame called film_pdf in your workspace.
+
+As a reminder, here's the structure of a connection URI for sqlalchemy:
+
+postgresql://[user[:password]@][host][:port][/database]
+
+--------------------------
+# Finish the connection URI
+connection_uri = "postgresql://repl:password@localhost:5432/dwh"
+db_engine_dwh = sqlalchemy.create_engine(connection_uri)
+
+# Transformation step, join with recommendations data
+film_pdf_joined = film_pdf.join(recommendations)
+
+# Finish the .to_sql() call to write to store.film
+film_pdf_joined.to_sql("film", db_engine_dwh, schema="store", if_exists="replace")
+
+# Run the query to fetch the data
+pd.read_sql("SELECT film_id, recommended_film_ids FROM store.film", db_engine_dwh)
+
+---------------------------------------------------------Defining a DAG----------------------------------------------------------------------------------------------------------------
+Extract: Extract the film PostgreSQL table into pandas.
+Transform: Split the rental_rate column of the film DataFrame.
+Load: Load a the film DataFrame into a PostgreSQL data warehouse.
+The functions extract_film_to_pandas(), transform_rental_rate() and load_dataframe_to_film() are defined in your workspace. 
+In this exercise, you'll add an ETL task to an existing DAG. The DAG to extend and the task to wait for are defined in your workspace 
+are defined as dag and wait_for_table respectively.
+
+in ipython shell, use
+
+dir() will give you the list of in scope variables:
+globals() will give you a dictionary of global variables
+locals() will give you a dictionary of local variables
+
+Complete the etl() function by making use of the functions defined in the exercise description.
+Make sure etl_task uses the etl callable.
+Set up the correct upstream dependency. Note that etl_task should wait for wait_for_table to be finished.
+The sample code contains a sample run. This means the ETL pipeline runs when you run the code
+
+
+# Define the ETL function
+def etl():
+    film_df = extract_film_to_pandas()
+    film_df = transform_rental_rate(film_df)
+    load_dataframe_to_film(film_df)
+
+# Define the ETL task using PythonOperator
+etl_task = PythonOperator(task_id='etl_heart_disease',
+                          python_callable=etl,
+                          dag=dag)
+
+# Set the upstream to wait_for_table and sample run etl()
+etl_task.set_upstream(wait_for_table)
+etl()
+---------------------------------Setting up Airflow------------------------------------------------------------------------------------------------------
+You'll need to move the dag.py file containing the DAG you defined in the previous exercise to, the DAGs folder. Here are the steps to find it:
+
+The airflow home directory is defined in the AIRFLOW_HOME environment variable. Type echo $AIRFLOW_HOME to find out.
+In this directory, find the airflow.cfg file. Use head to read the file, and find the value of the dags_folder.
+Now you can find the folder and move the dag.py file there: mv ./dag.py <dags_folder>.
+
+Which files does the DAGs folder have after you moved the file?
+
+repl:~$ pwd
+/home/repl
+repl:~$ ls
+airflow  chown  config  dag.py  datasets  repl:repl  spark-script.py  start.sh  startup  workspace
+repl:~$ ls -F
+airflow/  chown/  config/  dag.py  datasets/  repl:repl/  spark-script.py  start.sh*  startup/  workspace/
+repl:~$ echo $AIRFLOW_HOME
+~/airflow
+repl:~$ cd airflow
+repl:~/airflow$ ls
+airflow.cfg  airflow.cfg.bak  airflow.db  airflow-webserver.pid  dags  logs  unittests.cfg
+repl:~/airflow$ airflow.cfg | head
+bash: airflow.cfg: command not found
+repl:~/airflow$ head airflow.cfg
+[core]
+# The home folder for airflow, default is ~/airflow
+airflow_home = /home/repl/airflow
+
+# The folder where your airflow pipelines live, most likely a
+# subfolder in a code repository
+# This path must be absolute
+dags_folder = /home/repl/airflow/dags
+
+# The folder where airflow should store its log files
+repl:~/airflow$ cd ..
+repl:~$ ls
+airflow  chown  config  dag.py  datasets  repl:repl  spark-script.py  start.sh  startup  workspace
+repl:~$ mv dag.py /home/repl/airflow/dags/
+repl:~$ ls /home/repl/airflow/dags/
+dag.py  dag_recommendations.py  __pycache__
+
+---------------------------------------------------------------------------------------------------
+The cron string means it runs at 0:00, so at midnight.
+
+----------------------------------------------------CASE STUDY------------------------------------------------------------------
+------------------------------------------------1, Querying the table---------------------------------------------------------------------------
+Now that you have a grasp of what's happening in the datacamp_application database, let's go ahead and write up a query for that database.
+
+The goal is to get a feeling for the data in this exercise. You'll get the rating data for three sample users and then use a predefined helper function, print_user_comparison(), to compare the sets of course ids these users rated
+
+--Complete the connection URI. The database is called datacamp_application. The host is localhost with port 5432. The username is repl and password is password.
+Select the ratings of users with id: 4387, 18163 and 8770.
+Fill in print_user_comparison() with the three users you selected.
+
+# Complete the connection URI
+connection_uri = "postgresql://repl:password@localhost:5432/datacamp_application"
+db_engine = sqlalchemy.create_engine(connection_uri)
+
+# Get user with id 4387
+user1 = pd.read_sql("SELECT * FROM rating WHERE user_id=4387", db_engine)
+
+# Get user with id 18163
+user2 = pd.read_sql("SELECT * FROM rating WHERE user_id=18163", db_engine)
+
+# Get user with id 8770
+user3 = pd.read_sql("SELECT * FROM rating WHERE user_id=8770", db_engine)
+
+# Use the helper function to compare the 3 users
+print_user_comparison(user1, user2, user3)
+
+--------------------------------------------------------Average rating per course----------------------------------------------------------
+
+Average rating per course
+A great way to recommend courses is to recommend top-rated courses, as DataCamp students often like courses that are highly rated by their peers.
+
+In this exercise, you'll complete a transformation function transform_avg_rating() that aggregates the rating data using the pandas DataFrame's .groupby() method. The goal is to get a DataFrame with two columns, a course id and its average rating:
+
+course_id	avg_rating
+123	4.72
+111	4.62
+...	...
+In this exercise, you'll complete this transformation function, and apply it on raw rating data extracted via the helper function extract_rating_data() which extracts course ratings from the rating table.
+
+to chek function
+
+In [5]: help(extract_rating_data)
+Help on function extract_rating_data in module __main__:
+
+extract_rating_data(db_engines)
+
+------------------------------------------------------
+# Complete the transformation function
+def transform_avg_rating(rating_data):
+  # Group by course_id and extract average rating per course
+  avg_rating = rating_data.groupby('course_id').rating.mean()
+  # Return sorted average ratings per course
+  sort_rating = avg_rating.sort_values(ascending=False).reset_index()
+  return sort_rating
+
+# Extract the rating data into a DataFrame    
+rating_data = extract_rating_data(db_engines)
+
+# Use transform_avg_rating on the extracted data and print results
+avg_rating_data = transform_avg_rating(rating_data)
+print(avg_rating_data) 
+
+------------------------------------------Filter out corrupt data---------------------------------------------------------------------------------------------------------------
+
+Filter out corrupt data
+One recurrent step you can expect in the transformation phase would be to clean up some incomplete data. In this exercise, you're going to look at course data, which has the following format:
+
+course_id	title	description	programming_language
+1	Some Course	...	r
+You're going to inspect this DataFrame and make sure there are no missing values by using the pandas DataFrame's .isnull().sum() methods. You will find that the programming_language column has some missing values.
+
+As such, you will complete the transform_fill_programming_language() function by using the .fillna() method to fill missing values.
+-----
+course_data = extract_course_data(db_engines)
+
+# Print out the number of missing values per column
+print(course_data.isnull().sum())
+
+# The transformation should fill in the missing values
+def transform_fill_programming_language(course_data):
+    imputed = course_data.fillna({"programming_language": "r"})
+    return imputed
+
+transformed = transform_fill_programming_language(course_data)
+
+# Print out the number of missing values per column of transformed
+print(transformed.isnull().sum())
+
+-------------------------------------------Using the recommender transformation---------------------------------------------------------
+Using the recommender transformation
+In the last few exercises, you calculated the average rating per course and cleaned up some course data. 
+You will use this data to produce viable recommendations for DataCamp students.
+
+As a reminder, here are the decision rules for producing recommendations:
+
+Use technology a student has rated the most.
+Exclude courses a student has already rated.
+Find the three top-rated courses from eligible courses.
+In order to produce the final recommendations, you will use the average course ratings, and the list of eligible recommendations per user, 
+stored in avg_course_ratings and courses_to_recommend respectively. 
+You will do this by completing the transform_recommendations() function which merges both DataFrames and finds the top 3 highest rated courses to recommend per user
+Complete the transform_recommendations() function by merging both DataFrames and sorting the results by rating.
+Store recommendations per user in the recommendations object.
+
+# Complete the transformation function
+def transform_recommendations(avg_course_ratings, courses_to_recommend):
+    # Merge both DataFrames
+    merged = courses_to_recommend.merge(avg_course_ratings)
+    # Sort values by rating and group by user_id
+    grouped = merged.sort_values("rating", ascending = False).groupby('user_id') 
+    # Produce the top 3 values and sort by user_id
+    recommendations = grouped.head(3).sort_values("user_id").reset_index()
+    final_recommendations = recommendations[["user_id", "course_id","rating"]]
+    # Return final recommendations
+    return final_recommendations
+
+# Use the function with the predefined DataFrame objects
+recommendations = transform_recommendations(avg_course_ratings, courses_to_recommend)
+
+---------------------------------------The target table-------------------------------------------
+The target table
+In the previous exercises, you've calculated a DataFrame called recommendations. It contains pairs of user_id's' and course_id's, with a rating that represents the average rating of this course. The assumption is the highest rated course, which is eligible for a user would be best to recommend.
+
+It's time to put this table into a database so that it can be used by several products like a recommendation engine or an emailing system.
+
+Since it's a pandas.DataFrame object, you can use the .to_sql() method. Of course, you'll have to connect to the database using the connection URI first. The recommendations table is available in your environment.
+
+Start with postgresql://[user[:password]@][host][:port][/database] and fill in the information provided.
+Use .to_sql() on recommendations. Use help(recommendations.to_sql) if you're stuck
+
+connection_uri = "postgresql://repl:password@localhost:5432/dwh"
+db_engine = sqlalchemy.create_engine(connection_uri)
+
+def load_to_dwh(recommendations):
+    recommendations.to_sql("recommendations", db_engine, if_exists="replace")
+
+---------------------------------------------------------Defining the DAG-----------------------------------------------------------------------------
+
+Defining the DAG
+In the previous exercises, you've completed the extract, transform and load phases separately. Now all of this is put together in one neat etl() function that you can discover in the console.
+
+The etl() function extracts raw course and ratings data from relevant databases, cleans corrupt data and fills in missing value, computes average rating per course and creates recommendations based on the decision rules for producing recommendations, and finally loads the recommendations into a database.
+
+As you might remember from the video, etl() accepts a single argument: db_engines. You can pass this to the task using op_kwargs in the PythonOperator. You can pass it a dictionary that will be filled in as kwargs in the callable.
+
+---
+
+# Define the DAG so it runs on a daily basis
+dag = DAG(dag_id="recommendations",
+          schedule_interval="0 0 * * *")
+
+# Make sure `etl()` is called in the operator. Pass the correct kwargs.
+task_recommendations = PythonOperator(
+    task_id="recommendations_task",
+    python_callable=etl,
+    op_kwargs={"db_engines":db_engines},
+)
+
+----------------------------------------DAG UI---------------------------------------------------------------------
+Enable the DAG
+It's time to enable the DAG you just created, so it can start running on a daily schedule.
+
+To the right you can find the Airflow interface. The DAG you created is called recommendations.
+
+Can you find how to enable the DAG?
+
+By switching the left-hand slide from Off to On
+--------------------------------------------------------Querying the recommendations--------------------------------------------------------------------------------------
+
+Querying the recommendations
+In the previous exercises, you've learned how to calculate a table with course recommendations on a daily basis. Now that this recommendations table is in the data warehouse, you could also quickly join it with other tables in order to produce important features for DataCamp students such as customized marketing emails, intelligent recommendations for students and other features.
+
+In this exercise, you will get a taste of how the newly created recommendations table could be utilized by creating a function recommendations_for_user() which automatically gets the top recommended courses based per user ID for a particular rating threshold.
+
+
+Complete the query in the recommendations_for_user() function definition. It should join the courses table.
+Complete the read_sql() function in recommendations_for_user(). The params argument is incomplete.
+Observe the results of the recommendations_for_user() function you defined in the last statements.
+
+Join on the courses table by editing the query, replace the placeholder by courses.
+The key, "threshold", is missing from the params dictionary.
+Run the function as you like. This is not checked
+
+------
+def recommendations_for_user(user_id, threshold=4.5):
+  # Join with the courses table
+  query = """
+  SELECT title, rating FROM recommendations
+    INNER JOIN courses ON courses.course_id = recommendations.course_id
+    WHERE user_id=%(user_id)s AND rating>%(threshold)s
+    ORDER BY rating DESC
+  """
+  # Add the threshold parameter
+  predictions_df = pd.read_sql(query, db_engine, params = {"user_id": user_id, 
+                                                           "threshold": threshold})
+  return predictions_df.title.values
+
+# Try the function you created
+print(recommendations_for_user(12, 4.65))
+
+
+
+
+
+
+
+
+
+
+

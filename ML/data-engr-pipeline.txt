@@ -1,0 +1,966 @@
+
+---Ingest: Singer--------------------------------------------------------------
+Snapshots in a data lake
+In some cases, access to the data lake is provided in the form of a file system, which can be mapped transparently to your working machine. In this exercise, the data lake is available to you under ~/workspace/mnt/data_lake. Find out what dataset is currently in the business layer, using the commands ls to list the contents of the directory you’re in and cd to change the directory you’re in.
+
+
+repl:~$ pwd
+/home/repl
+repl:~$ cd workspace/mnt/data_lake/
+repl:~/workspace/mnt/data_lake$ ls -lrt
+total 12
+drwxr-xr-x 3 repl repl 4096 Sep 24 07:26 landing
+drwxr-xr-x 3 repl repl 4096 Sep 24 07:26 clean
+drwxr-xr-x 3 repl repl 4096 Sep 24 07:26 business
+repl:~/workspace/mnt/data_lake$ cd business/
+repl:~/workspace/mnt/data_lake/business$ ls -lrt
+total 4
+drwxr-xr-x 2 repl repl 4096 Sep 24 07:26 customer_viewing_behavior
+repl:~/workspace/mnt/data_lake/business$ file customer_viewing_behavior/
+customer_viewing_behavior/: directory
+repl:~/workspace/mnt/data_lake/business$ cd customer_viewing_behavior/
+repl:~/workspace/mnt/data_lake/business/customer_viewing_behavior$ ls -lrt
+total 4
+-rw-r--r-- 1 repl repl 560 Sep 24 07:26 part-00000-838f8d57-1ccf-437a-8765-d523b355661f-c000.snappy.parquet
+
+-------------------
+
+he data catalog
+To navigate a data lake, a data catalog is typically provided. It abstracts the details of where to find the data and in what format it is stored. 
+Sometimes they hold more metadata.
+
+For developers, referencing a data catalog removes hardcoded parts from code. Generally you’re not interested in the details of loading the data, 
+you just want to do useful things with it.
+
+A very simple catalog has been prepared for you. It’s a Python dictionary mapping names of datasets to certain DataLinks. 
+Call the read() method of the catalog’s diaper_reviews and inspect the returned object. What type is it?
+
+The catalog contains two objects. As with any Python dictionary, you access the object by name: catalog["diaper_reviews"].
+Do not forget to call the .read() method on that object.
+Call type() on an object to investigate its class.
+
+In [3]: catalog["diaper_reviews"].read()
+Out[3]: DataFrame[brand: string, model: string, absorption_rate: tinyint, comfort: tinyint]
+
+In [7]: type(catalog["diaper_reviews"].read())
+Out[7]: pyspark.sql.dataframe.DataFrame
+
+-----Working with JSON
+Because JSON is ubiquitous, we should be able to read to and write from this format. As we will see in the next lesson, many configuration files in Singer hold JSON.
+The parameters to open are a filename and a mode, which is “w” for writing.
+json.dump is similar to json.dumps in that it takes an object (passed to the obj keyword argument) to serialize, but has an extra required argument, called fp, which is a reference to an opened file (or file-like object). In the slides, we omitted the keyword
+
+# Import json
+import json
+
+database_config = {
+  "host": "10.0.0.5",
+  "port": 8456
+}
+
+# Open the configuration file in writable mode
+with open("database_config.json", "w") as file_handle:
+  # Serialize the object in this file handle
+  json.dump(obj=database_config, fp=file_handle)
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Specifying the schema of the data
+You’re given a dataset of pricing details of diapers from several stores. After some inspection, you understand that the products have an identical schema, regardless of the store.
+
+Since your company is already invested in Stitch, the mother company of Singer, you’ll be writing a custom Singer “tap” to export the different products in a standardized way. To do so, you will need to associate a schema with the actual data.
+
+Example of the products for a particular shop:
+
+{'items': [{'brand': 'Huggies',
+            'model': 'newborn',
+            'price': 6.8,
+            'currency': 'EUR',            
+            'quantity': 40,
+            'date': '2019-02-01',
+            'countrycode': 'DE'            
+            },
+           {…}]
+
+Codify the schema related to the store products.
+Write that schema to the “products” stream on stdout using the Singer API
+
+# Complete the JSON schema
+schema = {'properties': {
+    'brand': {'type': 'string'},
+    'model': {'type': 'string'},
+    'price': {'type': 'number'},
+    'currency': {'type': 'string'},
+    'quantity': {'type': 'integer', 'minimum': 1},
+    'date': {'type': 'string', 'format': 'date'}, 
+    'countrycode': {'type': 'string', 'pattern': "^[A-Z]{2}$"},
+    'store_name': {'type': 'string'}}}
+
+# Write the schema to stdout
+singer.write_schema(stream_name='products', schema=schema, key_properties=[])
+
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+Properly propagating state
+Imagine this table to reflect the current contents of a database in which updates are sometimes being made.
+
+id	name	last-updated-on	previous-update-timestamp
+1	Adrian	2019-06-14T12:00:04.000+02:00	2019-01-02T02:01:14.000+02:00
+2	Ruanne	2019-06-16T18:33:21.000+02:00	2019-03-05T14:58:02.000+02:00
+3	Hillary	2019-06-14T10:05:12.000+02:00	2019-02-24T19:23:58.000+02:00
+You’re running a tap daily at midnight, to extract only the records that were updated in this database since your last retrieval.
+
+What was the state message at the end of the run you started at 2019-06-16T00:00:00.000+02:00, that is after you ran tap-mydelta --state last_state.json --config db_config.json, with the contents of last_state.json being
+
+out {"max-last-updated-on": "2019-06-14T12:00:04.000+02:00"}
+
+{"type": "STATE", "value": {"max-last-updated-on": "2019-06-14T12:00:04.000+02:00"}}
+
+--------------------------------------------------------
+
+Communicating with an API
+The marketing team you are collaborating with has been scraping several websites for customer reviews on consumer products. 
+The dataset is only exposed to you through an internal REST API. You would like to get access to that data in its entirety and store it in a convenient way, say csv. 
+While the data is available over the company’s internal network, 
+you still need to supply the API key that the marketing team has created for your exploration use case: api_key: scientist007
+
+For technical reasons, the endpoint has been made available to you on localhost:5000. 
+You can “browse” to it, using the well-known requests module, by calling requests.get(SOME_URL). You can authenticate to the API using your API key. 
+Simply fill in the template URL host:port/api_key/.
+
+
+endpoint = "http://localhost:5000"
+
+# Fill in the correct API key
+api_key = "scientist007"
+
+# Find out which endpoints are being exposed
+api_response = requests.get(f"{endpoint}/{api_key}").json()
+pprint.pprint(api_response)
+
+
+------------------------Query the API for a list of all shops that were scraped by the marketing team.
+------------------------Make the API return all products of the store that starts with the letter D.
+
+endpoint = "http://localhost:5000"
+
+# Fill in the correct API key
+api_key = "scientist007"
+
+# Find out which endpoints are being exposed
+api_response = requests.get(f"{endpoint}/{api_key}").json()
+pprint.pprint(api_response)
+
+# Show the results of the API's endpoint for the shops
+shops = requests.get(f"{endpoint}/{api_key}/diaper/api/v1.0/shops").json()
+print(shops)
+
+# Show the items of the shop starting with a "d"
+products_of_shop = requests.get(f"{endpoint}/{api_key}/diaper/api/v1.0/items/DM").json()
+pprint.pprint(products_of_shop)
+
+
+-------------------------------------------------------------------------------------------------------------------------------------
+Streaming records
+In an earlier exercise, you codified the schema that goes with the data you got from the marketing team’s RESTful API. Now it’s time to stream some data to go with it.
+
+A convenience function, retrieve_store_items, has been made available to you. It is based on the previous exercise and requires one positional argument,
+ the name of a shop known by the API, and will return a list of all records related to that shop
+
+Retrieve the diaper products of the shop Tesco.
+Write one of these products to the same stream you wrote the schema earlier, which was called “products”. You will likely need to add a field, to comply with the schema
+
+In [1]: help(retrieve_store_items)
+Help on function retrieve_store_items in module __main__:
+
+retrieve_store_items(store_name, items_endpoint='http://localhost:5000/scientist007/diaper/api/v1.0/items/')
+
+---------------------
+# Use the convenience function to query the API
+tesco_items = retrieve_store_items("Tesco")
+
+singer.write_schema(stream_name='products', schema=schema,
+                    key_properties=[])
+
+# Write a single record to the stream, that adheres to the schema
+singer.write_record(stream_name="products", 
+                    record={**tesco_items[0], 'store_name': "Tesco"})
+
+-------------------Now use the more appropriate function write_records to write all items for all shops exposed by the API. 
+-----------------As you don’t know a priori how big the dataset will be, use a generator expression when you can
+---Use the correct function: write_record expects record as one of its arguments, whereas write_records (mind the trailing “s”) expects records (again, plural).
+---Using generators like you did in this exercise is a great way of keeping the memory footprint low, which is especially important when you are dealing with a lot of data
+
+# Use the convenience function to query the API
+tesco_items = retrieve_store_items("Tesco")
+
+singer.write_schema(stream_name='products', schema=schema,
+                    key_properties=[])
+
+# Write a single record to the stream, that adheres to the schema
+singer.write_record(stream_name="products", 
+                    record={**tesco_items[0], 'store_name': "Tesco"})
+
+for shop in requests.get(SHOPS_URL).json()["shops"]:
+    # Write all of the records that you retrieve from the API
+    singer.write_records(
+      stream_name="products", # Use the same stream name that you used in the schema
+      records=({**item, 'store_name': shop}
+               for item in retrieve_store_items(shop))
+    )
+
+
+--------------------------------------
+
+repl:~/workspace$ ls
+ingest  mnt
+repl:~/workspace$ ls -lrt ingest
+total 8
+-rw-rw-r-- 1 repl repl  174 Sep 24 06:49 data_lake.conf
+drwxrwxr-x 3 repl repl 4096 Sep 24 07:27 marketing_tap
+repl:~/workspace$ ls -lrt mnt
+total 4
+drwxr-xr-x 3 repl repl 4096 Sep 25 20:25 data_lake
+repl:~/workspace$ ls -lrt mnt/data_lake/
+total 4
+drwxr-xr-x 3 repl repl 4096 Sep 25 20:25 landing
+repl:~/workspace$ ls -lrt mnt/data_lake/landing
+total 4
+drwxr-xr-x 3 repl repl 4096 Sep 25 20:25 marketing_api
+repl:~/workspace$ 
+repl:~/workspace$ cat ingest/data_lake.conf 
+{
+    "delimiter": ",",
+    "quotechar": "'",
+    "destination_path": "/home/repl/workspace/mnt/data_lake/landing/marketing_api/diapers/",
+    "disable_collection": "true"
+}
+repl:~/workspace$
+
+
+----Chain taps and targets
+For re-use among your organization, a data engineer would typically collocate that data in one spot. Common options are the data warehouse and nowadays also the data lake. The ingestion pipeline is the first pipeline your data will “flow through”, and it will typically end up in a staging or landing area.
+
+Your network administrator has given you write access to the landing area of your company’s data lake, which is file system based. They made it available to you under /home/repl/workspace/mnt/data_lake.
+
+Your singer tap has already been packaged as tap-marketing-api (you can call it like that from the bash shell). Its output is simply the schema and records you made earlier.
+
+--Pipe the output of your singer “tap” to target-csv’s stdin.
+To specify where the CSV file should be written, you need to pass the configuration file data_lake.conf, which is in your IDE’s current workspace, to target-csv, using the --config flag
+
+solution.sh
+# You need to run the following command in the 
+# terminal from the ~/workspace directory.
+# We'll bring you there first. 
+# The command here is still prefixed with a '#'.
+# Run everything after the '#' sign.
+
+# tap-marketing-api | target-csv --config ingest/data_lake.conf
+
+-----tap_marking_api.py---------------------------
+
+import requests
+import singer
+
+api_netloc = "localhost:5000"
+api_key = "scientist007"
+shops_template = f"http://{api_netloc}/{api_key}/diaper/api/v1.0/shops"
+items_template = f"http://{api_netloc}/{api_key}/diaper/api/v1.0/items/"
+
+# Complete the JSON schema
+schema = {'properties': {
+    'brand': {'type': 'string'},
+    'model': {'type': 'string'},
+    'price': {'type': 'number'},
+    'currency': {'type': 'string'},
+    'quantity': {'type': 'integer', 'minimum': 1},
+    'date': {'type': 'string', "format": "date"},
+    'countrycode': {'type': 'string', 'pattern': "^[A-Z]{2}$"},
+    'store_name': {'type': 'string'}},
+    '$schema': 'http://json-schema.org/draft-07/schema#'
+}
+
+-------------setup.py----------------------
+#!/usr/bin/env python
+
+from setuptools import setup
+
+setup(name='tap-marketing-api',
+      version='0.0.1',
+      description="Singer tap for pulling all data from my company's internal marketing API",
+      author='DataCamp Student',
+      url='https://singer.io',
+      classifiers=['Programming Language :: Python :: 3 :: Only'],
+      py_modules=['tap_marketing_api'],
+      install_requires=[
+          'requests>=2.21.0',
+          'singer-python>=2.1.4',
+      ],
+      entry_points='''
+          [console_scripts]
+          tap-marketing-api=tap_marketing_api:main
+      ''',
+      )
+
+-------------------Spark-------------------------------------------------------------------------------
+
+----Reading a CSV file
+Loading the data is the first step in building a data transformation pipeline. “Comma separated values” (CSV) is a file commonly used file format for data exchange. You’re now going to use Spark to read a CSV file.
+
+You’ve seen in the videos how to load landing/prices.csv. Now let’s do the same for landing/ratings.csv, step by step. Remember, the actual data lake is made available to you under ~/workspace/mnt/data_lake.
+
+A SparkSession named spark has already been loaded for you
+
+# Read a csv file and set the headers
+df = (spark.read
+      .options(header=True)
+      .csv("/home/repl/workspace/mnt/data_lake/landing/ratings.csv"))
+
+df.show()
+
+
+---Defining a schema
+When you don’t specify a schema, the data types of all columns in the CSV are strings, like in the previous exercise. String manipulations can be cumbersome and inefficient when the data is better represented by a different type. You are usually better off defining the data types yourself.
+
+In the ratings.csv dataset from the previous exercise, the rating values in the columns “absorption_rate” and “comfort” are expressed on a scale from 1 to 5, like with Amazon’s web store. Because of that, they easily fit into a ByteType(), which can hold values between -128 and 127. The other columns are better left as StringType()s.
+
+
+-------
+from pyspark.sql.types import *
+from pprint import pprint
+
+# Define the schema
+schema = StructType([
+  StructField("brand", StringType(), nullable=False),
+  StructField("model", StringType(), nullable=False),
+  StructField("absorption_rate", ByteType(), nullable=True),
+  StructField("comfort", ByteType(), nullable=True)
+])
+
+df = (spark
+      .read
+      .options(header="true")
+      # Pass the predefined schema to the Reader
+      .schema(schema)
+      .csv("/home/repl/workspace/mnt/data_lake/landing/ratings.csv"))
+pprint(df.dtypes)
+
+-----------Remove any invalid rows by passing the correct keyword (and associated value) to the reader options.
+-------If you’re interested, try running the code again with mode="PERMISSIVE", which is the default mode. By the way, the mode is a case insensitive parameter.
+# Specify the option to drop invalid rows
+ratings = (spark
+           .read
+           .options(header=True, mode="DROPMALFORMED")
+           .csv("/home/repl/workspace/mnt/data_lake/landing/ratings_with_invalid_rows.csv"))
+ratings.show()
+
+------------------Fill the incomplete rows, by supplying the default numeric value of 4 for the comfort colum
+print("BEFORE")
+ratings.show()
+
+print("AFTER")
+# Replace nulls with arbitrary value on column subset
+ratings = ratings.fillna(4, subset=["comfort"])
+ratings.show()
+
+-----------------
+Conditionally replacing values
+A last common situation could be that you have values that you want to replace or that don’t make any sense as we saw in the video. You can select the column to be transformed by using the .withColumn() method, conditionally replace those values using the pyspark.sql.functions.when function when values meet our given condition or leave them unaltered when they don’t with the .otherwise() function.
+
+In this example we are not interested in the actual comfort values of the diapers. Instead, we want to know if the diapers simply meet a level of comfort. So we will make a column that contains the value sufficient if the comfort level is reached, otherwise insufficient.
+
+The DataFrame ratings is already available for you.
+
+You've seen in the videos how to load landing/prices.csv. Now let’s do the same for landing/ratings.csv,
+
+-----------------------------------
+from pyspark.sql.functions import col, when
+
+# Add/relabel the column
+ratings = ratings.withColumn("comfort",
+                             # Express the condition in terms of column operations
+                             when(col("comfort") > 3, "sufficient").otherwise("insufficient"))
+
+ratings.show()
+
+-----------------------------------------------------------------------------------------------
+Selecting and renaming columns
+Transformations are the next step in our pipeline. We’ve seen that we make transformations on our data because we want to derive certain insights. Let’s start by selecting and renaming columns.
+
+You’ve seen in the videos how to do this for landing/prices.csv. Now let’s do the same for landing/ratings.csv, step by step.
+
+A SparkSession named spark has already been loaded for you and the csv file was read in a DataFrame called ratings
+
+
+from pyspark.sql.functions import col
+
+# Select the columns and rename the "absorption_rate" column
+result = ratings.select([col("brand"),
+                         col("model"),
+                         col("absorption_rate").alias("absorbency")])
+
+#Show only unique values
+result.distinct().show()
+
+-----------------------------------------------------------------
+Grouping and aggregating data
+Ever wondered what the average salary is in a region? To achieve this, you would need to group the data by region and aggregate a metric on that subgroup of data. We’ve already seen in the video a couple of these aggregation metrics, on landingprices.csv_. We’ll inspect a few more now and apply them to _~/workspace/mnt/data_lake/landing/purchased.csv_
+
+from pyspark.sql.functions import col, avg, stddev_samp, max as sfmax
+
+aggregated = (purchased
+              # Group rows by 'Country'
+              .groupBy(col('Country'))
+              .agg(
+                # Calculate the average salary per group
+                avg('Salary').alias('average_salary'),
+                # Calculate the standard deviation per group
+                stddev_samp('Salary'),
+                # Retain the highest salary per group
+                sfmax('Salary').alias('highest_salary')
+              )
+             )
+
+aggregated.show()
+
+-----------------------------------------------------------------------------
+
+cd spark_pipelines
+zip --recurse-paths pydiaper.zip pydiaper
+
+-----------------------------------------------------------------------------------
+Submitting your Spark job
+With the dependencies of a job ready to be distributed across a cluster’s nodes, you can submit a job to a cluster easily. In this exercise, you'll be testing the job locally.
+
+To run a PySpark application locally, you need to call:
+
+spark-submit --py-files PY_FILES MAIN_PYTHON_FILE
+with PY_FILES being either a zipped archive, a Python egg or separate Python files that will be placed on the PYTHONPATH environment variable of your cluster's nodes. The MAIN_PYTHON_FILE should be the entry point of your application.
+
+Note that you don’t need to have all the data locally: you could create small samples from the original datasets if they’re big. Here, a smaller dataset is made available under /home/repl/workspace/mnt/data_lake/landing/prices.csv
+
+Remember from the previous exercise, the call to spark-submit looks like this: spark-submit --py-files PY_FILES MAIN_PYTHON_FILE. Here PY_FILES is the compressed archive you created with zip, which is available in the current folder. The MAIN_PYTHON_FILE should be the entry point of your application, which is in this case ~/workspace/spark_pipelines/pydiaper/pydiaper/cleaning/clean_ratings.py
+
+
+spark-submit --py-files spark_pipelines/pydiaper/pydiaper.zip ./spark_pipelines/pydiaper/pydiaper/cleaning/clean_ratings.py
+
+
+
+
+----------------Verifying your pipeline’s output
+With the import statement fixed, you ran the spark-submit command again, just like before (no need to resubmit).
+
+Verify that the business files have been created by listing the contents of the directory where you stored them (_/home/repl/workspace/mnt/data_lake/clean/product_ratings). How many _parquet files_ have been created?
+
+repl:~$ ls -lrt /home/repl/workspace/mnt/data_lake/clean/product_ratings
+total 8
+-rw-r--r-- 1 repl repl 1094 Sep 25 22:12 part-00001-4e858102-94da-44b2-b74b-107739cc7e82-c000.snappy.parquet
+-rw-r--r-- 1 repl repl 1101 Sep 25 22:12 part-00000-4e858102-94da-44b2-b74b-107739cc7e82-c000.snappy.parquet
+-rw-r--r-- 1 repl repl    0 Sep 25 22:12 _SUCCESS
+repl:~$
+
+-----------------------------Creating in-memory DataFrames
+Creating small datasets for unit tests is an important skill. It improves readability and understanding, because any developer looking at your code,
+ can immediately see the inputs to some function and how they relate to the output. Additionally, you can illustrate how the function behaves with normal data 
+and with exceptional data, like missing or incorrect fields
+
+from datetime import date
+from pyspark.sql import Row
+
+record = Row("country", "utm_campaign", "airtime_in_minutes", "start_date", "end_date")
+
+# Create a tuple of records
+data = (
+  record("USA", "DiapersFirst", 28, date(2017, 1, 20), date(2017, 1, 27)),
+  record("Germany", "WindelKind", 31, date(2017, 1, 25), None),
+  record("India", "CloseToCloth", 32, date(2017, 1, 25), date(2017, 2, 2))
+)
+
+# Create a DataFrame from these records
+frame = spark.createDataFrame(data)
+frame.show()
+
+---------------------------Making a function more widely reusable
+With the best intentions, one of your team mates chopped up a small Spark transformation pipeline, chinese_provinces.py, 
+into smaller functions that can be used in different locations, chinese_provinces_improved.py. 
+That’s great! Your team mate even wrote a test for one of those new functions. However, the test fails. You could verify this by running pipenv run pytest .
+ when you are in the chinese_demographics folder, if you wanted, but that’s not the point of this exercise. You’ll learn more about pytest in the next lesson anyway.
+
+In this exercise, you need to focus only on the ~/workspace/spark_pipelines/chinese_demographics folder.
+
+------test_improvements.py------------------------------------------------------
+from .chinese_provinces_improved import \
+    aggregate_inhabitants_by_province
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, \
+    StructField, StringType, LongType, BooleanType
+
+
+def test_aggregate_inhabitants_by_province():
+    """The number of inhabitants per province should be aggregated,
+    regardless of their distinctive features.
+    """
+
+    spark = SparkSession.builder.getOrCreate()
+
+    fields = [
+        StructField("country", StringType(), True),
+        StructField("province", StringType(), True),
+        StructField("inhabitants", LongType(), True),
+        StructField("foo", BooleanType(), True),  # distinctive features
+    ]
+
+    frame = spark.createDataFrame({
+        ("China", "A", 3, False),
+        ("China", "A", 2, True),
+        ("China", "B", 14, False),
+        ("US", "A", 4, False)},
+        schema=StructType(fields)
+    )
+    actual = aggregate_inhabitants_by_province(frame).cache()
+
+    # In the older implementation, the data was first filtered for a specific
+    # country, after which you'd aggregate by province. The same province
+    # name could occur in multiple countries though. Aggregating simply by
+    # province does not make sense.
+    expected = spark.createDataFrame(
+        {("China", "A", 5), ("China", "B", 14), ("US", "A", 4)},
+        schema=StructType(fields[:3])
+    ).cache()
+
+    assert actual.schema == expected.schema, "schemas don't match up"
+    assert sorted(actual.collect()) == sorted(expected.collect()),\
+        "data isn't equal"
+
+----chinese_province.py---------------------------------------------------------
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, lower, sum
+
+from .catalog import catalog
+
+
+def extract_demographics(sparksession, catalog):
+    return sparksession.read.parquet(catalog["clean/demographics"])
+
+
+def store_chinese_demographics(frame, catalog):
+    frame.write.parquet(catalog["business/chinese_demographics"])
+
+
+def aggregate_inhabitants_by_province(frame):
+    return (frame
+            .groupBy("province")
+            .agg(sum(col("inhabitants")).alias("inhabitants"))
+            )
+
+
+def main():
+    spark = SparkSession.builder.getOrCreate()
+    frame = extract_demographics(spark, catalog)
+    chinese_demographics = frame.filter(lower(col("country")) == "china")
+    aggregated_demographics = aggregate_inhabitants_by_province(
+        chinese_demographics
+    )
+    store_chinese_demographics(aggregated_demographics, catalog)
+
+
+if __name__ == "__main__":
+    main()
+
+-----solution
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, lower, sum
+
+from .catalog import catalog
+
+
+def extract_demographics(sparksession, catalog):
+    return sparksession.read.parquet(catalog["clean/demographics"])
+
+
+def store_chinese_demographics(frame, catalog):
+    frame.write.parquet(catalog["business/chinese_demographics"])
+
+
+def aggregate_inhabitants_by_province(frame):
+    return (frame
+            .groupBy("country", "province")
+            .agg(sum(col("inhabitants")).alias("inhabitants"))
+            )
+
+
+def main():
+    spark = SparkSession.builder.getOrCreate()
+    frame = extract_demographics(spark, catalog)
+    chinese_demographics = frame.filter(lower(col("country")) == "china")
+    aggregated_demographics = aggregate_inhabitants_by_province(chinese_demographics)
+    store_chinese_demographics(aggregated_demographics, catalog)
+
+
+if __name__ == "__main__":
+    main()
+
+
+------Understanding the output of pytest
+How many unit tests are automatically discovered by pytest in the workspace/spark_pipelines/pydiaper project?
+
+repl:~$ pwd
+/home/repl
+repl:~$
+repl:~$ ls
+airflow  chown  config  repl:repl  start.sh  startup  workspace
+repl:~$ cd workspace/
+repl:~/workspace$ ls
+spark_pipelines
+repl:~/workspace$ cd spark_pipelines/
+repl:~/workspace/spark_pipelines$ ls
+pydiaper
+repl:~/workspace/spark_pipelines$ cd pydiaper/
+repl:~/workspace/spark_pipelines/pydiaper$ ls
+__init__.py  Pipfile  Pipfile.lock  pydiaper
+repl:~/workspace/spark_pipelines/pydiaper$ cd pydiaper/
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$ ls
+cleansing  config.py  data_catalog  __init__.py  master  test
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$ ls test
+__init__.py  spark_helpers.py  test_spark_helpers.py
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$ pytest .
+===================================================== test session starts =====================================================
+platform linux -- Python 3.6.7, pytest-5.1.3, py-1.8.0, pluggy-0.12.0
+rootdir: /home/repl/workspace/spark_pipelines/pydiaper/pydiaper
+collected 3 items
+
+master/test_summarize.py .F                                                                                             [ 66%]
+test/test_spark_helpers.py .                                                                                            [100%]
+
+========================================================== FAILURES ===========================================================
+_______________________________________________ test_express_all_costs_in_euros _______________________________________________
+
+    def test_express_all_costs_in_euros():
+>       frame1 = spark.createDataFrame()
+E       TypeError: createDataFrame() missing 1 required positional argument: 'data'
+
+master/test_summarize.py:14: TypeError
+================================================ 1 failed, 2 passed in 13.20s =================================================
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$
+
+---There are 3 tests written. One of them is in a bad shape, and we should improve the code.
+
+
+------------------------------------------Improving style guide compliancy
+One of the reasons why Python is an easy language to get into, is because there’s a lot of similarity between code from different developers. That’s because the Python syntax relies on indents for scoping rules. Many developers follow the style guide of Python, known as PEP8.
+
+In the project you've been building so far, you want to enforce that people follow the rules laid out in PEP8. You can do so with Flake8, which is a static code checker (it does not run your code). You run flake8 in the same way that you run pytest. It will show warnings and errors for code that is not compliant with PEP8.
+
+In this exercise, you need to focus only on the ~/workspace/spark_pipelines/pydiaper.
+
+
+epl:~/workspace$ ls
+spark_pipelines
+repl:~/workspace$ cd spark_pipelines/
+repl:~/workspace/spark_pipelines$ ls
+pydiaper
+repl:~/workspace/spark_pipelines$ cd pydiaper/
+repl:~/workspace/spark_pipelines/pydiaper$ ls
+__init__.py  Pipfile  Pipfile.lock  pydiaper
+repl:~/workspace/spark_pipelines/pydiaper$ cd pydiaper/
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$ flake8 .
+./config.py:4:80: E501 line too long (83 > 79 characters)
+./master/test_summarize.py:14:5: F841 local variable 'frame1' is assigned to but never used
+./master/test_summarize.py:15:11: E271 multiple spaces after keyword
+./cleansing/clean_ratings.py:2:1: F403 'from pyspark.sql.types import *' used; unable to detect undefined names
+./cleansing/clean_ratings.py:9:14: F405 'StructType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:10:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:10:30: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:11:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:11:30: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:12:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:12:40: F405 'ByteType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:13:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_ratings.py:13:32: F405 'ByteType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:1:1: F401 'os' imported but unused
+./cleansing/clean_prices.py:4:1: F403 'from pyspark.sql.types import *' used; unable to detect undefined names
+./cleansing/clean_prices.py:11:14: F405 'StructType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:12:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:12:30: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:13:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:13:36: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:14:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:14:30: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:15:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:15:30: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:16:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:16:30: F405 'FloatType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:17:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:17:33: F405 'StringType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:18:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:18:33: F405 'IntegerType' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:19:9: F405 'StructField' may be undefined, or defined from star imports: pyspark.sql.types
+./cleansing/clean_prices.py:19:29: F405 'DateType' may be undefined, or defined from star imports: pyspark.sql.types
+repl:~/workspace/spark_pipelines/pydiaper/pydiaper$ 
+
+---
+Add flake8 to the development section in the Pipfile, which is in the project’s root folder. 
+This file serves a similar purpose as the requirements.txt files you might have seen in other Python projects. 
+It solves some problems with those though. To add flake8 correctly, look at the line that mentions pytest.
+
+Add flake8 to the .circleci/config.yml just before the line that triggers a run of pytest. Make sure to duplicate the syntax with pipenv run.
+
+Finally, execute pipenv run flake8 . in the project’s root folder to see how many errors and warnings were generated.
+ This is what CircleCI would execute for you and it could stop executing other steps, because this command generates errors
+
+----Pipfile
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+pyspark-stubs = ">=2.4.0"
+pytest = "*"
+flake8 = "*"
+
+[packages]
+pyspark = ">=2.4.0"
+
+[requires]
+python_version = "3.6"
+
+----config.yml
+version: 2
+jobs:
+  build:
+    working_directory: ~/data_scientists/optimal_diapers/
+    docker:
+      - image: gcr.io/my-companys-container-registry-on-google-cloud-123456/python:3.6.4
+    steps:
+      - checkout
+      - run:
+          command: |
+            sudo pip install pipenv
+            pipenv install
+      - run:
+          command: |
+            pipenv run flake8 .
+            pipenv run pytest .
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+          destination: tr1
+
+----------------------------------Specifying the DAG schedule
+While cron is old, its succinct syntax is used in many programs, even in Airflow! It shows its head when we instantiate a DAG and tell the Airflow scheduler when a certain time-based task needs to be run. In an Airflow DAG, we can do this by passing our cron expression to the schedule_interval parameter.
+
+In this example exercise, you will create a DAG that should be triggered every Monday, at 7 o’clock in the morning
+
+Keep the order of the arguments in mind:
+┌─── minute (0 - 59)
+│ ┌─── hour (0 - 23)
+│ │ ┌─── day of the month (1 - 31)
+│ │ │ ┌─── month (1 - 12)
+│ │ │ │ ┌─── day of the week (0 - 6) (Sunday to Saturday;
+│ │ │ │ │                              7 is also Sunday on some systems)
+* * * * *
+Remember, * is a wildcard, meaning all allowed values for this field.
+
+from datetime import datetime
+from airflow import DAG
+
+reporting_dag = DAG(
+    dag_id="publish_EMEA_sales_report", 
+    # Insert the cron expression
+    schedule_interval="0 7 * * 1",
+    start_date=datetime(2019, 11, 24),
+    default_args={"owner": "sales"}
+)
+
+-------Specifying operator dependencies
+Now that we have set up the scheduling using a cron expression, we know when the first of our tasks in a DAG should run, but we haven’t mentioned anything about how tasks are related. What we usually run is a number of tasks, and these tasks are modular pieces that fit together in order to complete a full DAG. We need to introduce some logic between our tasks, which we call dependencies, to tell Airflow when each task should start.
+
+In this exercise, we have already defined a number of operators for you. Their variable identifiers are the same as the task_ids shown in the figure below. Let’s try to recreate the graph.
+
+Airflow DAG illustrating the sequence of tasks for preparing a pizza
+
+
+-----Preparing a DAG for daily pipelines
+Now you know why Airflow is so powerful and how it can help us schedule and monitor our workflows. An Airflow workflow is designed as a Directed Acyclic Graph (DAG). When thinking about a workflow, you should think of individual tasks that can be executed independently. This is also a very resilient design, as each task could be retried multiple times if an error occurs.
+
+We’ve seen when to schedule our jobs, how to define our operators and how to set up dependencies between them. You now know all you need to create your first Airflow workflow (the DAG). The only thing left is bring everything together into our full data pipeline. The BashOperator, PythonOperator and SparkSubmitOperators have already been imported for you, as well as the DAG class and the datetime class.
+
+---Create a DAG(),
+Use a boolean value to indicate that emails should not be sent when tasks fail,
+Specify that tasks in this DAG should start on June 25th, 2019.
+Instruct Airflow to run this DAG daily, using an @daily preset, which is another way of specifying schedules like CRON, that is more easily readable, at the cost of being less well-known or clear about the exact time
+
+# Create a DAG object
+dag = DAG(
+  dag_id='optimize_diaper_purchases',
+  default_args={
+    # Don't email on failure
+    'email_on_failure': False,
+    # Specify when tasks should have started earliest
+    'start_date': datetime(2019, 6, 25)
+  },
+  # Run the DAG daily
+  schedule_interval='@daily')
+
+
+
+----------------------Scheduling bash scripts with Airflow
+Remember the first chapter, where we packaged our singer tap as tap-marketing-api and piped it into a target csv file? Back then we did this manually in Bash. Now that we know how, we can configure Airflow to run this automatically.
+
+As we’ve seen already, in Airflow there are pre-defined operators, such as the BashOperator and the PythonOperator.
+
+In this exercise, we need to run the ingestion pipeline from Airflow, so we will use the BashOperator for this purpose. Let’s define this Bash task within Airflow and assign it a clear name to easily distinguish and understand it in the user interface.
+
+Assign the task an id of ingest_data.
+Pipe the output from tap-marketing-api to target-csv, using the bash_command argument of the BashOperator Pass the reference to the data_lake.conf as the value to target-csv’s --config flag.
+
+config = os.path.join(os.environ["AIRFLOW_HOME"], 
+                      "scripts",
+                      "configs", 
+                      "data_lake.conf")
+
+ingest = BashOperator(
+  # Assign a descriptive id
+  task_id="ingest_data", 
+  # Complete the ingestion pipeline
+  bash_command='tap-marketing-api | target-csv --config %s' % config,
+  dag=dag)
+
+---------------------------Scheduling Spark jobs with Airflow
+Remember chapter 2, where we imported, cleaned and transformed our data using Spark? We will use Airflow to schedule this as well. We already saw at the end of chapter 2 that we could package our code and use “spark-submit” to run our cleaning and transformation pipeline. To do this with Airflow, we are going to use the SparkSubmitOperator, which is a wrapper around “spark-submit”. There are many more “spark-submit” parameters that you could specify, however we will not dive into those details here.
+
+Note also that we can use a context manager to create our DAG, this reduces the need to write dag=dag as an argument in each of our operators, which also reduces the likelihood of forgetting to specify this in each of our operators.
+
+Import the SparkSubmitOperator.
+Set the path for entry_point by joining the AIRFLOW_HOME environment variable and scripts/clean_ratings.py.
+Set the path for dependency_path by joining the AIRFLOW_HOME environment variable and dependencies/pydiaper.zip.
+Complete the clean_data task by passing a reference to the file that starts the Spark job and the additional files the job will use.
+
+# Import the operator
+from airflow.contrib.operators.spark_submit_operator import SparkSubmitOperator
+
+# Set the path for our files.
+entry_point = os.path.join(os.environ["AIRFLOW_HOME"], "scripts", "clean_ratings.py")
+dependency_path = os.path.join(os.environ["AIRFLOW_HOME"], "dependencies", "pydiaper.zip")
+
+with DAG('data_pipeline', start_date=datetime(2019, 6, 25),
+         schedule_interval='@daily') as dag:
+  	# Define task clean, running a cleaning job.
+    clean_data = SparkSubmitOperator(
+        application=entry_point, 
+        py_files=dependency_path,
+        task_id='clean_data',
+        conn_id='spark_default')
+
+---------------------------Scheduling the full data pipeline with Airflow
+Time for the frosting on the cake: bring the operators from the previous exercises together and schedule them in the right order!
+
+The operators you could need (SparkSubmitOperator, PythonOperator and BashOperator) have been imported already.
+
+Use the correct operators for the ìngest (a bash task), clean (a Spark job) and insight (another Spark job) tasks.
+Define the order in which the tasks should be run.
+
+------
+spark_args = {"py_files": dependency_path,
+              "conn_id": "spark_default"}
+# Define ingest, clean and transform job.
+with dag:
+    ingest = BashOperator(task_id='Ingest_data', bash_command='tap-marketing-api | target-csv --config %s' % config)
+    clean = SparkSubmitOperator(application=clean_path, task_id='clean_data', **spark_args)
+    insight = SparkSubmitOperator(application=transform_path, task_id='show_report', **spark_args)
+    
+    # set triggering sequence
+    ingest >> clean >> insight
+
+----------------------------------Airflow’s executors
+Apache Airflow’s “SequentialExecutor” is low maintenance, but its biggest drawback is a lack of parallelization (hence the name). 
+All other executors provide some way to parallelize tasks if their dependencies are met.
+
+In a production environment, you’re not likely to encounter the “SequentialExecutor”. 
+Which executor is configured in the /home/repl/workspace/airflow/airflow.cfg configuration file?
+
+Execute less /home/repl/workspace/airflow/airflow.cfg to open the file for reading. 
+Navigation can be done with the up and down arrow keys (↑ or ↓) on your keyboard, as well as with the keys j, k, space and enter.
+
+The CeleryExecutor is a good choice for distributing tasks across multiple worker machines. Your database choice needs to support it though, so SQLite should be replaced with e.g. MySQL or PostgreSQL.
+
+--------------------------------
+
+"""
+An Apache Airflow DAG used in course material.
+
+"""
+from datetime import datetime, timedelta
+
+from airflow import DAG
+from airflow.models import Variable
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator  ###add this line
+
+default_args = {
+    "owner": "squad-a",  ###don't comment this line out
+    "depends_on_past": False,
+    "start_date": datetime(2019, 7, 5),
+    "email": ["foo@bar.com"],
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
+
+dag = DAG(
+    "cleaning",
+    default_args=default_args,
+    user_defined_macros={"env": Variable.get("environment")},
+    schedule_interval="0 5 */2 * *"
+)
+
+
+def say(what):
+    print(what)
+
+
+with dag:
+    say_hello = BashOperator(task_id="say-hello", bash_command="echo Hello,")
+    say_world = BashOperator(task_id="say-world", bash_command="echo World")
+    shout = PythonOperator(task_id="shout",
+                           python_callable=say,
+                           op_kwargs={'what': '!'})
+
+    say_hello >> say_world >> shout
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
