@@ -1,0 +1,683 @@
+------------------------------Create a SQL table from a dataframe----------------------------------------------------------
+A dataframe can be used to create a temporary table. A temporary table is one that will not exist after the session ends. 
+Spark documentation also refers to this type of table as a SQL temporary view. In the documentation this is referred to as to register the dataframe as a SQL temporary view.
+ This command is called on the dataframe itself, and creates a table if it does not already exist, 
+replacing it with the current data from the dataframe if it does already exist.
+
+--Load csv data from the file trainsched.txt into a dataframe stored in a variable named df.
+Create a temporary table from df. Call the table "table1".
+
+# Load trainsched.txt
+df = spark.read.csv("trainsched.txt", header=True)
+
+# Create temporary table called table1
+df.createOrReplaceTempView("table1")
+
+
+---------------------------------Determine the column names of a table
+The video lesson showed how to run an SQL query. It also showed how to inspect the column names of a Spark table using SQL. 
+This is important to know because in practice relational tables are typically provided without additional documentation giving the table schema.
+
+Use a DESCRIBE query to determine the names and types of the columns in the table schedule
+
+
+# Inspect the columns in the table df
+spark.sql("DESCRIBE schedule").show()
+
+
+-----------------------------------------Aggregation, step by step
+Whether to use dot notation or SQL is a personal preference. However, as demonstrated in the video exercise, 
+there are cases where SQL is simpler. Also as demonstrated in the video lesson, there are also cases where the dot notation gives a counterintuitive result, 
+such as when a second aggregation on a column clobbers a prior aggregation on that column. 
+As mentioned in the video, agg in pyspark is only able to summarize one column at a time.
+
+The following exercises calculate the time of the first departure for each train line.
+
+The first two queries match. However, the second two do not. Can you determine why?
+
+--Fill in the blanks to get the first pair of commands to display the identical result.
+The fourth result, named result, is a naive attempt at replicating the previous line.
+ However, it is counter-intuitively different. How? Fill in the blank to print the name of the second column of result.
+
+--Try: groupBy('train_id').
+The agg operator wants the know what aggregation operator (min) to apply, and to which column (time).
+After using min on time with the agg operator, the resulting column is named min(time), which needs to be renamed to start.
+
+# Give the identical result in each command
+spark.sql('SELECT train_id, MIN(time) AS start FROM schedule GROUP BY train_id').show()
+df.groupBy('train_id').agg({'time':'min'}).withColumnRenamed('min(time)', 'start').show()
+
+# Print the second column of the result
+spark.sql('SELECT train_id, MIN(time), MAX(time) FROM schedule GROUP BY train_id').show()
+result = df.groupBy('train_id').agg({'time':'min', 'time':'max'})
+result.show()
+print(result.columns[1])
+
+
+--------------------------------------------Aggregating the same column twice
+There are cases where dot notation can be more cumbersome than SQL. This exercise calculates the first and last times for each train line. The following code does this using dot notation.
+
+from pyspark.sql.functions import min, max, col
+expr = [min(col("time")).alias('start'), max(col("time")).alias('end')]
+dot_df = df.groupBy("train_id").agg(*expr)
+dot_df.show()
++--------+-----+-----+
+|train_id|start|  end|
++--------+-----+-----+
+|     217|6:06a|6:59a|
+|     324|7:59a|9:05a|
++--------+-----+-----+
+Your mission is to achieve this same result using a SQL query. The dataframe df has been registered as a table named schedule.
+
+# Write a SQL query giving a result identical to dot_df
+query = "SELECT train_id, MIN(time) AS start, MAX(time) AS end FROM schedule GROUP BY train_id"
+sql_df = spark.sql(query)
+sql_df.show()
+
+---------------------------------------Aggregate dot SQL
+The following code uses SQL to set the value of a dataframe called df.
+
+df = spark.sql("""
+SELECT *, 
+LEAD(time,1) OVER(PARTITION BY train_id ORDER BY time) AS time_next 
+FROM schedule
+""")
+The LEAD clause has an equivalent function in pyspark.sql.functions.
+The PARTITION BY, and ORDER BY clauses each have an equivalent dot notation function that is called on the Window object.
+
+--Create a dataframe called dot_df that contains the identical result as df, using dot notation instead of SQL.
+
+# Obtain the identical result using dot notation 
+dot_df = df.withColumn('time_next', lead('time', 1)
+        .over(Window.partitionBy('train_id')
+        .orderBy('time')))
+
+-------------------------------------------Convert window function from dot notation to SQL
+We are going to add a column to a train schedule so that each row contains the number of minutes for the train to reach its next stop.
+
+We have a dataframe df where df.columns == ['train_id', 'station', 'time'].
+df is registered as a SQL table named schedule.
+
+The following window function query uses dot notation. It gives a new dataframe dot_df.
+
+window = Window.partitionBy('train_id').orderBy('time')
+dot_df = df.withColumn('diff_min', 
+                    (unix_timestamp(lead('time', 1).over(window),'H:m') 
+                     - unix_timestamp('time', 'H:m'))/60)
+
+--# Create a SQL query to obtain an identical result to dot_df 
+query = """
+SELECT *, 
+(UNIX_TIMESTAMP(LEAD(time, 1) OVER (PARTITION BY train_id ORDER BY time),'H:m') 
+ - UNIX_TIMESTAMP(time, 'H:m'))/60 AS diff_min 
+FROM schedule 
+"""
+sql_df = spark.sql(query)
+sql_df.show()
+
+-----------------------------------------------------------
+Note the use of the unix_timestamp function, which is equivalent to the UNIX_TIMESTAMP SQL function.
+
+
+
+-----------------------------------Loading a dataframe from a parquet file
+A dataframe file called sherlock_sentences.parquet is available in your workspace. Each row of this dataframe contains a single clause. Each clause is a sequence of words that is separated from other clauses by punctuation, such as periods, quotes, and other natural language delimiters that signify a sentence or sentence fragment. Your mission, if you choose to accept it, is to load this file.
+
+# Load the dataframe
+df = spark.read.load('sherlock_sentences.parquet')
+
+# Filter and show the first 5 rows
+df.where('id > 70').show(5, truncate=False)
+
+-------------------------------------Split and explode a text column
+A dataframe clauses_df with 100 rows is provided. It has a column clause and a row id. Each clause is a string containing one or more words separated by spaces
+
+--Split the clause column into a column called words, containing an array of individual words.
+Explode the words column into a column called word.
+Count the resulting number of rows
+
+# Split the clause column into a column called words 
+split_df = clauses_df.select(split('clause', ' ').alias('words'))
+split_df.show(5, truncate=False)
+
+# Explode the words column into a column called word 
+exploded_df = split_df.select(explode('words').alias('word'))
+exploded_df.show(10)
+
+# Count the resulting number of rows in exploded_df
+print("\nNumber of rows: ", exploded_df.count())
+
+--------------------------------------------Creating context window feature data
+The moving window technique is useful for machine learning algorithms models that use context window feature data.
+
+A table text having columns id, word, part, title is available in your workspace. It contains chapters 9, 10, 11 and 12 of the Sherlock Holmes book. The words are already processed and organized into one word per row. Each word has a unique integer index provided by the column id. The id column is lower for words that appear earlier in the text and greater for words appearing later in the text.
+
+The first 10 rows of the dataset for chapter 12 are printed to the console as Table1. The first ten rows of the desired result, constrained to show part 12 (Chapter 12) are printed to the console as Table2. In Table2, the "given" word for the row is provided in column w3. Columns w1 and w2 give the two words immediately prior to the given word. Columns w4 and w5 give the two words immediately after the given word.
+
+Note how w1 and w2 are null for the first row. This is because there are not any words prior to w3 (here, "xii") that are within part 12.
+
+Don't hesitate to refer to the slides available at the right of the console if you forget how something was done in the video.
+
+---Get the word for each row, along with the previous two words and the subsequent two words.
+
+# Word for each row, previous two and subsequent two words
+query = """
+SELECT
+part,
+LAG(word, 2) OVER(PARTITION BY part ORDER BY id) AS w1,
+LAG(word, 1) OVER(PARTITION BY part ORDER BY id) AS w2,
+word AS w3,
+LEAD(word, 1) OVER(PARTITION BY part ORDER BY id) AS w4,
+LEAD(word, 2) OVER(PARTITION BY part ORDER BY id) AS w5
+FROM text
+"""
+spark.sql(query).where("part = 12").show(10)
+
+------------------------------------------------------------Repartitioning the data
+A dataframe text_df exists, having columns id, word, and chapter. The first 5 rows of text_df are printed to the console.
+
+You can determine that there are 12 chapters by the following:
+
+text_df.select('chapter')\
+       .distinct()\
+       .sort('chapter')\
+       .show(truncate=False)
+The result of this command is printed to the console as Table 1.
+
+The dataframe text_df is currently in a single partition. Suppose that you know that the upcoming processing steps are going to be grouping the data on chapters. 
+Processing the data will be most efficient if each chapter stays within a single machine. To avoid unnecessary shuffling of the data from one machine to another, 
+let's repartition the dataframe into one partition per chapter, using the repartition and getNumPartitions commands taught in the first video lesson to this chapter.
+
+Don't hesitate to refer to the slides available at the right of the console if you forget how something was done in the video.
+
+Repartition the text_df into 12 partitions, with each chapter in its own partition.
+Display the number of partitions in the new dataframe.
+
+# Repartition text_df into 12 partitions on 'chapter' column
+repart_df = text_df.repartition(12, 'chapter')
+
+# Prove that repart_df has 12 partitions
+repart_df.rdd.getNumPartitions()
+
+----------------------------------------------------------------------Finding common word sequences
+Previously we saw how to create a query that finds word sequences of length three ("3-tuples").
+ We used that query as a subquery in a traditional SQL query to find the most common 3-tuples in the text document. 
+You will now perform a similar task to find the most common 5-tuples.
+
+Dataframe df is available. It contains the first five chapters of the Sherlock Holmes text. It has columns: word, id, part, title. 
+The id column is an integer such that a word that comes later in the document has a larger id than a word that comes before it. 
+The part column separates the data into chapters. The dataframe df is also registered as temporary table called df. Our objective is to create a dataset
+ where each row corresponds to a 5-tuple, having a count indicating how many times the tuple occurred in the dataset.
+
+
+--Create a query query that finds the 10 most common 5-tuples in the datase
+
+# Find the top 10 sequences of five words
+query = """
+SELECT w1, w2, w3, w4, w5, COUNT(*) AS count FROM (
+   SELECT word AS w1,
+   LEAD(word,1) OVER(PARTITION BY part ORDER BY id ) AS w2,
+   LEAD(word,2) OVER(PARTITION BY part ORDER BY id ) AS w3,
+   LEAD(word,3) OVER(PARTITION BY part ORDER BY id ) AS w4,
+   LEAD(word,4) OVER(PARTITION BY part ORDER BY id ) AS w5
+   FROM text
+)
+GROUP BY w1, w2, w3, w4, w5
+ORDER BY count DESC
+LIMIT 10
+""" 
+df = spark.sql(query)
+df.show()
+
+-------------------------------------------------------------------------Unique 5-tuples in sorted order
+A previous lesson taught an operation that eliminates duplicates, fetching unique records. In a previous exercise you obtained common 5-tuples.
+We will combine these two capabilities to find the unique 5-tuples, sorted alphabetically in descending order.
+
+The table text contains the first four chapters of the Sherlock Holmes text. It has the following columns: word, id, and part.
+--Retrieve the last ten unique 5-tuples sorted alphabetically in descending order.
+
+# Unique 5-tuples sorted in descending order
+spark.sql("""
+SELECT distinct w1, w2, w3, w4, w5 FROM (
+   SELECT word AS w1,
+   LEAD(word,1) OVER(PARTITION BY part ORDER BY id ) AS w2,
+   LEAD(word,2) OVER(PARTITION BY part ORDER BY id ) AS w3,
+   LEAD(word,3) OVER(PARTITION BY part ORDER BY id ) AS w4,
+   LEAD(word,4) OVER(PARTITION BY part ORDER BY id ) AS w5
+   FROM text
+)
+ORDER BY w1 DESC, w2 DESC, w3 DESC, w4 DESC, w5 DESC 
+LIMIT 10
+""").show()
+
+
+--------------------------------------------------------------------------Most frequent 3-tuples per chapter
+We will now use a query as a subquery in a larger query. Spark SQL supports advanced features of SQL. 
+Previously you learned how to find the most common word sequences over an entire book having 12 chapters. 
+Now you will obtain the most frequent 3-tuple for each of the 12 chapters. You will do this using a window function to retrieve the top row per group.
+
+There is a table having columns word, id, chapter.
+
+The chapter column corresponds to the number of a chapter.
+The word column corresponds to a single word in the document.
+The id column corresponds to the word position in the document.
+We also have the following query:
+
+subquery = """
+SELECT chapter, w1, w2, w3, COUNT(*) as count
+FROM
+(
+    SELECT
+    chapter,
+    word AS w1,
+    LEAD(word, 1) OVER(PARTITION BY chapter ORDER BY id ) AS w2,
+    LEAD(word, 2) OVER(PARTITION BY chapter ORDER BY id ) AS w3
+    FROM text
+)
+GROUP BY chapter, w1, w2, w3
+ORDER BY chapter, count DESC
+"""
+spark.sql(subquery).show(5)
++-------+---+-----+----+-----+
+|chapter| w1|   w2|  w3|count|
++-------+---+-----+----+-----+
+|      1| up|   to| the|    6|
+|      1|one|   of| the|    6|
+|      1| in|front|  of|    5|
+|      1| up|  and|down|    5|
+|      1| it|  was|   a|    5|
++-------+---+-----+----+-----+
+only showing top 5 rows
+From this table you can determine that the first row of the desired result will be:
+
++-------+---+-----+----+-----+
+|chapter| w1|   w2|  w3|count|
++-------+---+-----+----+-----+
+|      1| up|   to| the|    6|
++-------+---+-----+----+-----+
+Your task is to use subquery as a subquery in a larger query to obtain the most frequent 3-tuple per chapter. 
+The desired result will have the same schema, but having one row per chapter. Use ROW_NUMBER() to obtain the row number per row per chapter
+
+----
+#   Most frequent 3-tuple per chapter
+query = """
+SELECT chapter, w1, w2, w3, count FROM
+(
+  SELECT
+  chapter,
+  ROW_NUMBER() OVER (PARTITION BY chapter ORDER BY count DESC) AS row,
+  w1, w2, w3, count
+  FROM ( %s )
+)
+WHERE row = 1
+ORDER BY chapter ASC
+""" % subquery
+
+spark.sql(query).show()
+
+-------------------------------Practicing caching: part 1
+In the next few exercises, you'll experiment with different ways of caching two DataFrames.
+
+A dataframe df1 is loaded from a csv file. Several processing steps are performed on it. As df1 is to be used more than once, it is a candidate for caching.
+
+A second dataframe df2 is created by performing additional compute-intensive steps on df1. It is also a candidate for caching.
+
+Because df2 depends on df1 the question arises: is it better to cache df1, or to cache df2?
+
+In this exercise, we'll try caching df1. Note the amount of time that each action takes. We'll be comparing these in the next exercise.
+
+
+---Cache df1 only.
+Run a first action on df1 and repeat it, then run an action df2 and repeat it. This has been done for you.
+Confirm whether or not df1 is cached.
+
+# Unpersists df1 and df2 and initializes a timer
+prep(df1, df2) 
+
+# Cache df1
+df1.cache()
+
+# Run actions on both dataframes
+run(df1, "df1_1st") 
+run(df1, "df1_2nd")
+run(df2, "df2_1st")
+run(df2, "df2_2nd", elapsed=True)
+
+# Prove df1 is cached
+print(df1.is_cached)
+
+------------------------------------------Practicing caching: the SQL
+Previously, we examined two DataFrames: df1 and df2 (which is created from df1). We tried caching df1, but not df2. 
+In this exercise, we'll examine the effects of caching df2, but not df1.
+
+Once again, note the amount of time that each action takes. We'll be comparing these in the next exercise. Which tasks are sped up? Which are slowed down?
+
+--Cache df2, but not df1.
+Run a first action on df1 and repeat it, then run an action df2 and repeat it. This has been done for you.
+
+# Unpersist df1 and df2 and initializes a timer
+prep(df1, df2) 
+
+# Persist df2 using memory and disk storage level 
+df2.persist(storageLevel=pyspark.StorageLevel.MEMORY_AND_DISK)
+
+# Run actions both dataframes
+run(df1, "df1_1st") 
+run(df1, "df1_2nd")
+run(df2, "df2_1st")
+run(df2, "df2_2nd", elapsed=True)
+
+-----output
+
+<script.py> output:
+    df1_1st : 0.9s
+    df1_2nd : 0.8s
+    df2_1st : 1.0s
+    df2_2nd : 0.1s
+    Overall elapsed : 2.8
+
+-----------------------------------------------Practicing caching: putting it all together
+What was the best approach to caching df1 and df2 and why?
+
+Your results will vary; but here is one (random) result for each of the two approaches:
+
+First answer (cache df1):
+
+df1_1st : 2.4s
+df1_2nd : 0.1s
+df2_1st : 0.3s
+df2_2nd : 0.2s
+Overall elapsed : 3.9
+Second answer (cache df2):
+
+df1_1st : 2.3s
+df1_2nd : 1.1s
+df2_1st : 1.7s
+df2_2nd : 0.1s
+Overall elapsed : 6.4
+
+--->Cache df1, because it improves the time of the 2nd, 3rd, and 4th action.
+press
+
+
+------------------------------------------------Caching and uncaching tables
+In the lesson we learned that tables can be cached. Whereas a dataframe is cached using a cache or persist operation, a table is cached using a cacheTable operation.
+
+A table called table1 is available.
+
+--List the tables with the listTables() method.
+Cache table1 and confirm that it is cached.
+Uncache table1 and confirm that it is uncached
+
+# List the tables
+print("Tables:\n", spark.catalog.listTables())
+
+# Cache table1 and Confirm that it is cached
+spark.catalog.cacheTable('table1')
+print("table1 is cached: ", spark.catalog.isCached('table1'))
+
+# Uncache table1 and confirm that it is uncached
+spark.catalog.uncacheTable('table1')
+print("table1 is cached: ", spark.catalog.isCached('table1'))
+
+
+
+---------------------------------------Spark UI storage tab
+A folder sherlock_parts exists on disk containing twelve text files.
+
+ls sherlock_parts
+sherlock_part0.txt   sherlock_part2.txt   sherlock_part7.txt
+sherlock_part1.txt   sherlock_part3.txt   sherlock_part8.txt
+sherlock_part10.txt  sherlock_part4.txt   sherlock_part9.txt
+sherlock_part11.txt  sherlock_part5.txt
+sherlock_part12.txt  sherlock_part6.txt
+When loaded, this creates a dataframe having seven partitions.
+
+partitioned_df = sqlContext.read.text('sherlock_parts')
+partitioned_df.rdd.getNumPartitions()
+7
+A table is created, and the table is cached:
+
+partitioned_df.createOrReplaceTempView('text')
+spark.catalog.cacheTable('text')
+
+Question: What will appear in the Spark UI Storage tab once the cache operation is triggered by an action?
+
+-->The table name and number of partitions match what was cached.
+
+--------------------------------------------------Practice logging
+The following code is executed on startup:
+
+import logging
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
+                    format='%(levelname)s - %(message)s')
+You will now practice these logging operations.
+
+--Log columns of text_df as debug message.
+Log whether table1 is cached as info message.
+Log first row of text_df as warning message.
+Log selected columns of text_df as error message
+
+# Log columns of text_df as debug message
+logging.debug("text_df columns: %s", text_df.columns)
+
+# Log whether table1 is cached as info message
+logging.info("table1 is cached: %s", spark.catalog.isCached(tableName="table1"))
+
+# Log first row of text_df as warning message
+logging.warning("The first row of text_df:\n %s", text_df.first())
+
+# Log selected columns of text_df as error message
+logging.error("Selected columns: %s", text_df.select("id", "word"))
+
+---------------------------------------------Practice logging 2
+The following code is executed on startup:
+
+import logging
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
+                    format='%(levelname)s - %(message)s')
+In the lesson we learned that Spark operations that trigger an action must be logged with care to avoid stealth loss of compute resources. 
+You will now practice identifying logging statements that trigger an action on a dataframe or table.
+
+A dataframe text_df is available. This dataframe is registered as a table called table1.
+
+--Several log statements are provided. All of them are initially commented out. Uncomment the ones that do not trigger an action on text_df
+
+# Uncomment the statements that do NOT trigger text_df
+logging.debug("text_df columns: %s", text_df.columns)
+logging.info("table1 is cached: %s", spark.catalog.isCached(tableName="table1"))
+# logging.warning("The first row of text_df: %s", text_df.first())
+logging.error("Selected columns: %s", text_df.select("id", "word"))
+logging.info("Tables: %s", spark.sql("SHOW tables").collect())
+logging.debug("First row: %s", spark.sql("SELECT * FROM table1 LIMIT 1"))
+# logging.debug("Count: %s", spark.sql("SELECT COUNT(*) AS count FROM table1").collect())
+
+-------------------------------------------------explain sql
+# Run explain on text_df
+text_df.explain(text_df)
+
+# Run explain on "SELECT COUNT(*) AS count FROM table1" 
+spark.sql("SELECT COUNT(*) AS count FROM table1").explain()
+
+# Run explain on "SELECT COUNT(DISTINCT word) AS words FROM table1"
+spark.sql("SELECT COUNT(DISTINCT word) AS words FROM table1").explain()
+
+-------------------------------------------------------------
+Three dataframes are available: part2, part3, and part4. The output of the explain operation on each dataframe is given below. The questions posed in this exercise can be answered by inspecting the explain() output.
+
+part2_df.explain()
+== Physical Plan ==
+*(1) Project [word#0, id#1L, part#2, title#3]
++- *(1) Filter (isnotnull(part#2) && (part#2 = 2))
+   +- *(1) FileScan parquet [word#0,id#1L,part#2,title#3] Batched: true, Format: Parquet, Location: InMemoryFileIndex[file:/tmp/tmptef3j2qh/sherlock_parts.parquet], PartitionFilters: [], PushedFilters: [IsNotNull(part), EqualTo(part,2)], ReadSchema: struct<word:string,id:bigint,part:int,title:string>
+part3_df.explain()
+== Physical Plan ==
+InMemoryTableScan [word#9, id#10L, part#11, title#12]
+   +- InMemoryRelation [word#9, id#10L, part#11, title#12], true, 10000, StorageLevel(disk, memory, deserialized, 1 replicas)
+         +- *(1) Project [word#9, id#10L, part#11, title#12]
+            +- *(1) Filter (isnotnull(part#11) && (part#11 = 4))
+               +- *(1) FileScan parquet [word#9,id#10L,part#11,title#12] Batched: true, Format: Parquet, Location: InMemoryFileIndex[file:/tmp/tmptef3j2qh/sherlock_parts.parquet], PartitionFilters: [], PushedFilters: [IsNotNull(part), EqualTo(part,4)], ReadSchema: struct<word:string,id:bigint,part:int,title:string>
+part4_df.explain()
+== Physical Plan ==
+*(1) FileScan parquet [word#38,id#39L] Batched: true, Format: Parquet, Location: InMemoryFileIndex[file:/tmp/tmptef3j2qh/sherlock.parquet], PartitionFilters: [], PushedFilters: [], ReadSchema: struct<word:string,id:bigint>
+
+# The filename that part2_df was loaded from
+answer1 = 'sherlock_parts.parquet'
+
+# The (integer) part is loaded in part3_df
+answer2 = 4
+
+# The filename that part4_df loaded from
+answer3 = 'sherlock.parquet'
+
+# The value of the ReadSchema property in part4_df.explain() 
+answer4 = 'struct<word:string,id:bigint>'
+
+-----------------------------------------------------------------------------------------------------
+
+# Returns true if the value is a nonempty vector
+nonempty_udf = udf(lambda x:  
+    True if (x and hasattr(x, "toArray") and x.numNonzeros())
+    else False, BooleanType())
+
+# Returns first element of the array as string
+s_udf = udf(lambda x: str(x[0]) if (x and type(x) is list and len(x) > 0)
+    else '', StringType())
+
+--------------------------------------
+
+# Show the rows where doc contains the item '5'
+df_before.where(array_contains('doc', '5')).show()
+
+# UDF removes items in TRIVIAL_TOKENS from array
+rm_trivial_udf = udf(lambda x:
+                     list(set(x) - TRIVIAL_TOKENS) if x
+                     else x,
+                     ArrayType(StringType()))
+
+# Remove trivial tokens from 'in' and 'out' columns of df2
+df_after = df_before.withColumn('in', rm_trivial_udf('in'))\
+                    .withColumn('out', rm_trivial_udf('out'))
+
+# Show the rows of df_after where doc contains the item '5'
+df_after.where(array_contains('doc','5')).show()
+
+--------------------------------------------------------------------------
+
+# Selects the first element of a vector column
+first_udf = udf(lambda x:
+            float(x.indices[0]) 
+            if (x and hasattr(x, "toArray") and x.numNonzeros())
+            else 0.0,
+            FloatType())
+
+# Apply first_udf to the output column
+df.select(first_udf("output").alias("result")).show(5)
+
+--------------------------------------------------------------------------------
+# Add label by applying the first_udf to output column
+df_new = df.withColumn('label', first_udf('output'))
+
+# Show the first five rows 
+df_new.show(5)
+
+-------------------------------------------------------------------------------------
+# Transform df using model
+result = model.transform(df.withColumnRenamed('in', 'words'))\
+        .withColumnRenamed('words', 'in')\
+        .withColumnRenamed('vec', 'invec')
+result.drop('sentence').show(3, False)
+
+# Add a column based on the out column called outvec
+result = model.transform(result.withColumnRenamed('out', 'words'))\
+        .withColumnRenamed('words', 'out')\
+        .withColumnRenamed('vec', 'outvec')
+result.select('invec', 'outvec').show(3,False)
+
+--------------------------------------------------------------------------------------
+# Import the lit function
+from pyspark.sql.functions import lit
+
+# Select the rows where endword is 'him' and label 1
+df_pos = df.where("endword = 'him'")\
+           .withColumn('label', lit(1))
+
+# Select the rows where endword is not 'him' and label 0
+df_neg = df.where("endword <> 'him'")\
+           .withColumn('label', lit(0))
+
+# Union pos and neg in equal number
+df_examples = df_pos.union(df_neg.limit(df_pos.count()))
+print("Number of examples: ", df_examples.count())
+df_examples.where("endword <> 'him'").sample(False, .1, 42).show(5)
+
+-------------------------------------------------------------------------------------
+# Split the examples into train and test, use 80/20 split
+df_trainset, df_testset = df_examples.randomSplit((0.80, 0.20), 42)
+
+# Print the number of training examples
+print("Number training: ", df_trainset.count())
+
+# Print the number of test examples
+print("Number test: ", df_testset.count())
+
+---------------------------------------------
+
+# Import the logistic regression classifier
+from pyspark.ml.classification import LogisticRegression
+
+# Instantiate logistic setting elasticnet to 0.0
+logistic = LogisticRegression(maxIter=100, regParam=0.4, elasticNetParam=0.0)
+
+# Train the logistic classifer on the trainset
+df_fitted = logistic.fit(df_trainset)
+
+# Print the number of training iterations
+print("Training iterations: ", df_fitted.summary.totalIterations)
+
+----------------------------------------------------------------------------------------
+
+# Score the model on test data
+testSummary = df_fitted.evaluate(df_testset)
+
+# Print the AUC metric
+print("\ntest AUC: %.3f" % testSummary.areaUnderROC)
+
+---------------------------------------------------------------------------------------
+# Apply the model to the test data
+predictions = df_fitted.transform(df_testset).select(fields)
+
+# Print incorrect if prediction does not match label
+for x in predictions.take(8):
+    print()
+    if x.label != int(x.prediction):
+        print("INCORRECT ==> ")
+    for y in fields:
+        print(y,":", x[y])   
+
+---------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
