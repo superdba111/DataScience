@@ -1,1 +1,4 @@
-machine learning
+## machine learning
+
+the machine learning pipeline - importing modules, preprocessing steps, instantiating estimators, train/test split, cross validating, 
+tuning hyperparameters, then fitting, predicting and evaluating
