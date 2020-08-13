@@ -1,0 +1,533 @@
+Templates with multiple arguments
+You wish to build upon your previous DAG and modify the code to support two arguments - the date in YYYYMMDD format, and a file name passed to the cleandata.sh script.
+
+-----template
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
+
+default_args = {
+  'start_date': datetime(2020, 4, 15),
+}
+
+cleandata_dag = DAG('cleandata',
+                    default_args=default_args,
+                    schedule_interval='@daily')
+
+# Modify the templated command to handle a
+# second argument called filename.
+templated_command = """
+  bash cleandata.sh {{ ds_nodash }} ____
+"""
+
+# Modify clean_task to pass the new argument
+clean_task = BashOperator(task_id='cleandata_task',
+                          bash_command=templated_command,
+                          params={'filename': ____},
+                          dag=cleandata_dag)
+
+# Create a new BashOperator clean_task2
+clean_task2 = BashOperator(task_id='cleandata_task2',
+                           ____,
+                           ____,
+                           ____)
+                           
+# Set the operator dependencies
+____
+
+----using it
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
+
+default_args = {
+  'start_date': datetime(2020, 4, 15),
+}
+
+cleandata_dag = DAG('cleandata',
+                    default_args=default_args,
+                    schedule_interval='@daily')
+
+# Create a templated command to execute
+# 'bash cleandata.sh datestring'
+templated_command = """
+  bash cleandata.sh {{ ds_nodash }} {{ params.filename }}
+"""
+
+# Modify clean_task to use the templated command
+clean_task = BashOperator(task_id='cleandata_task',
+                          bash_command=templated_command,
+                          params={'filename': 'salesdata.txt'},
+                          dag=cleandata_dag)
+
+
+---------------------------------------Using lists with templates
+Once again, you decide to make some modifications to the design of your cleandata workflow. This time, you realize that you need to run the command cleandata.sh with the date argument and the file argument as before, except now you have a list of 30 files. You do not want to create 30 tasks, so your job is to modify the code to support running the argument for 30 or more files.
+
+The Python list of files is already created for you, simply called filelist.
+
+-----template,
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
+
+filelist = [f'file{x}.txt' for x in range(30)]
+
+default_args = {
+  'start_date': datetime(2020, 4, 15),
+}
+
+cleandata_dag = DAG('cleandata',
+                    default_args=default_args,
+                    schedule_interval='@daily')
+
+# Modify the template to handle multiple files in a 
+# single run.
+templated_command = """
+  <% for filename in ____ %>
+  bash cleandata.sh {{ ds_nodash }} {{ filename }};
+  <% endfor %>
+"""
+
+# Modify clean_task to use the templated command
+clean_task = BashOperator(task_id='cleandata_task',
+                          bash_command=templated_command,
+                          params={'filenames': ____},
+                          dag=cleandata_dag)
+
+
+-----using it
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
+
+filelist = [f'file{x}.txt' for x in range(30)]
+
+default_args = {
+  'start_date': datetime(2020, 4, 15),
+}
+
+cleandata_dag = DAG('cleandata',
+                    default_args=default_args,
+                    schedule_interval='@daily')
+
+# Modify the template to handle multiple files in a 
+# single run.
+templated_command = """
+  <% for filename in params.filenames %>
+  bash cleandata.sh {{ ds_nodash }} {{ filename }};
+  <% endfor %>
+"""
+
+# Modify clean_task to use the templated command
+clean_task = BashOperator(task_id='cleandata_task',
+                          bash_command=templated_command,
+                          params={'filenames': filelist},
+                          dag=cleandata_dag)
+                          
+
+---------------------
+repl:~/workspace$ cd /home/repl/workspace/dags
+repl:~/workspace/dags$ python3 cleandata_dag.py
+repl:~/workspace/dags$ cat cleandata_dag.py 
+from airflow.models import DAG
+from airflow.operators.bash_operator import BashOperator
+from datetime import datetime
+
+filelist = [f'file{x}.txt' for x in range(30)]
+
+default_args = {
+  'start_date': datetime(2020, 4, 15),
+}
+
+cleandata_dag = DAG('cleandata',
+                    default_args=default_args,
+                    schedule_interval='@daily')
+
+# Modify the template to handle multiple files in a 
+# single run.
+templated_command = """
+  <% for filename in params.filenames %>
+  bash cleandata.sh {{ ds_nodash }} {{ filename }};
+  <% endfor %>
+"""
+
+# Modify clean_task to use the templated command
+clean_task = BashOperator(task_id='cleandata_task',
+                          bash_command=templated_command,
+                          params={'filenames': filelist},
+                          dag=cleandata_dag)
+                          repl:~/workspace/dags$ 
+
+-----------------------------------------------------Understanding parameter options, Using specific tasks allows better monitoring of task state and possible parallel execution.
+You've used a few different methods to add templates to your workflows. Considering the differences between options, why would you want to create individual tasks (ie, BashOperators) with specific parameters vs a list of files?
+
+For example, why would you choose
+
+t1 = BashOperator(task_id='task1', bash_command=templated_command, params={'filename': 'file1.txt'}, dag=dag)
+t2 = BashOperator(task_id='task2', bash_command=templated_command, params={'filename': 'file2.txt'}, dag=dag)
+t3 = BashOperator(task_id='task3', bash_command=templated_command, params={'filename': 'file3.txt'}, dag=dag)
+over using a loop form such as
+
+t1 = BashOperator(task_id='task1', 
+                  bash_command=templated_command, 
+                  params={'filenames': ['file1.txt', 'file2.txt', 'file3.txt']},
+                  dag=dag)
+
+---------------------------------------Sending templated emails
+While reading through the Airflow documentation, you realize that various operations can use templated fields to provide added flexibility. You come across the docs for the EmailOperator and see that the content can be set to a template. You want to make use of this functionality to provide more detailed information regarding the output of a DAG run.
+
+---template
+from airflow.models import DAG
+from airflow.operators.email_operator import EmailOperator
+from datetime import datetime
+
+# Create the string representing the html email content
+html_email_str = """
+Date: {{ ____ }}
+Username: ____
+"""
+
+email_dag = DAG('template_email_test',
+                default_args={'start_date': datetime(2020, 4, 15)},
+                schedule_interval='@weekly')
+                
+email_task = EmailOperator(task_id='email_task',
+                           to='testuser@datacamp.com',
+                           subject="{{ ____ }}",
+                           html_content=____,
+                           params={'____': 'testemailuser'},
+                           dag=email_dag)
+
+-----using it
+from airflow.models import DAG
+from airflow.operators.email_operator import EmailOperator
+from datetime import datetime
+
+# Create the string representing the html email content
+html_email_str = """
+Date: {{ ds }}
+Username: {{ params.username }}
+"""
+
+email_dag = DAG('template_email_test',
+                default_args={'start_date': datetime(2020, 4, 15)},
+                schedule_interval='@weekly')
+                
+email_task = EmailOperator(task_id='email_task',
+                           to='testuser@datacamp.com',
+                           subject="{{ macros.uuid.uuid4() }}",
+                           html_content=html_email_str,
+                           params={'username': 'testemailuser'},
+                           dag=email_dag)
+
+---------------------------Branching   Define a BranchPythonOperator
+After learning about the power of conditional logic within Airflow, you wish to test out the BranchPythonOperator. You'd like to run a different code path if the current execution date represents a new year (ie, 2020 vs 2019).
+
+The DAG is defined for you, along with the tasks in question. Your current task is to implement the BranchPythonOperator.
+
+-------------
+# Create a function to determine if years are different
+def year_check(**kwargs):
+    current_year = int(kwargs['ds_nodash'][0:4])
+    previous_year = int(kwargs['prev_ds_nodash'][0:4])
+    if current_year == previous_year:
+        return 'current_year_task'
+    else:
+        return 'new_year_task'
+
+# Define the BranchPythonOperator
+branch_task = BranchPythonOperator(task_id='branch_task', dag=branch_dag,
+                                   python_callable=year_check, provide_context=True)
+# Define the dependencies
+branch_dag >> current_year_task
+branch_dag >> new_year_task
+
+------------------------------------------Branch troubleshooting
+While working with a workflow defined by a colleague, you notice that a branching operator executes, but there's never any change in the DAG results. You realize that regardless of the state defined by the branching operator, all other tasks complete, even as some should be skipped.
+
+Use what you've learned to determine the most likely reason that the branching operator is ineffective.
+
+-------------------------------------
+from airflow.models import DAG
+from airflow.operators.python_operator import BranchPythonOperator
+from airflow.operators.dummy_operator import DummyOperator
+from datetime import datetime
+
+dag = DAG('BranchingTest', default_args={'start_date': datetime(2020, 4, 15)}, schedule_interval='@daily')
+
+def branch_test(**kwargs):
+  if int(kwargs['ds_nodash']) % 2 == 0:
+    return 'even_day_task'
+  else:
+    return 'odd_day_task'
+ 
+start_task = DummyOperator(task_id='start_task', dag=dag)
+
+branch_task = BranchPythonOperator(
+       task_id='branch_task',
+       provide_context=True,
+       python_callable=branch_test,
+       dag=dag)
+
+even_day_task = DummyOperator(task_id='even_day_task', dag=dag)
+even_day_task2 = DummyOperator(task_id='even_day_task2', dag=dag)
+
+odd_day_task = DummyOperator(task_id='odd_day_task', dag=dag)
+odd_day_task2 = DummyOperator(task_id='odd_day_task2', dag=dag)
+
+start_task >> branch_task 
+even_day_task >> even_day_task2
+odd_day_task >> odd_day_task2
+
+-----------sol, The dependency is missing between the branch_task and even_day_task and odd_day_task
+
+---------------------------------Creating a production pipeline #1
+You've learned a lot about how Airflow works - now it's time to implement your workflow into a production pipeline consisting of many objects including sensors and operators. Your boss is interested in seeing this workflow become automated and able to provide SLA reporting as it provides some extra leverage for closing a deal the sales staff is working on. The sales prospect has indicated that once they see updates in an automated fashion, they're willing to sign-up for the indicated data service.
+
+From what you've learned about the process, you know that there is sales data that will be uploaded to the system. Once the data is uploaded, a new file should be created to kick off the full processing, but something isn't working correctly.
+
+Refer to the source code of the DAG to determine if anything extra needs to be added.
+
+----
+Update the DAG in pipeline.py to import the needed operators.
+Run the sense_file task from the command line and look for any errors. Use the command airflow test and the appropriate arguments to run the command. For the last argument, use a -1 instead of a specific date.
+Determine why the sense_file task does not complete and remedy this using the editor.
+Re-test the sense_file task and verify the problem is fixed.
+
+----------sol,
+from airflow.models import DAG
+from airflow.contrib.sensors.file_sensor import FileSensor
+
+# Import the needed operators
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from datetime import date, datetime
+
+def process_data(**context):
+  file = open('/home/repl/workspace/processed_data.tmp', 'w')
+  file.write(f'Data processed on {date.today()}')
+  file.close()
+
+    
+dag = DAG(dag_id='etl_update', default_args={'start_date': datetime(2020,4,1)})
+
+sensor = FileSensor(task_id='sense_file', 
+                    filepath='/home/repl/workspace/startprocess.txt',
+                    poke_interval=5,
+                    timeout=15,
+                    dag=dag)
+
+bash_task = BashOperator(task_id='cleanup_tempfiles', 
+                         bash_command='rm -f /home/repl/*.tmp',
+                         dag=dag)
+
+python_task = PythonOperator(task_id='run_processing', 
+                             python_callable=process_data,
+                             dag=dag)
+
+sensor >> bash_task >> python_task
+
+--------------------------------------------
+repl:~/workspace$ cd /home/repl/workspace/dags
+repl:~/workspace/dags$ python3 pipeline.py
+repl:~/workspace/dags$ cat pipeline.py 
+from airflow.models import DAG
+from airflow.contrib.sensors.file_sensor import FileSensor
+
+# Import the needed operators
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from datetime import date, datetime
+
+def process_data(**context):
+  file = open('/home/repl/workspace/processed_data.tmp', 'w')
+  file.write(f'Data processed on {date.today()}')
+  file.close()
+
+    
+dag = DAG(dag_id='etl_update', default_args={'start_date': datetime(2020,4,1)})
+
+sensor = FileSensor(task_id='sense_file', 
+                    filepath='/home/repl/workspace/startprocess.txt',
+                    poke_interval=5,
+                    timeout=15,
+                    dag=dag)
+
+bash_task = BashOperator(task_id='cleanup_tempfiles', 
+                         bash_command='rm -f /home/repl/*.tmp',
+                         dag=dag)
+
+python_task = PythonOperator(task_id='run_processing', 
+                             python_callable=process_data,
+                             dag=dag)
+
+sensor >> bash_task >> python_task
+
+
+-------------------------------------------
+from airflow.models import DAG
+from airflow.contrib.sensors.file_sensor import FileSensor
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from dags.process import process_data
+from datetime import timedelta, datetime
+
+# Update the default arguments and apply them to the DAG
+default_args = {
+  'start_date': datetime(2019,1,1),
+  'sla': timedelta(minutes=90)
+}
+
+dag = DAG(dag_id='etl_update', default_args=default_args)
+
+sensor = FileSensor(task_id='sense_file', 
+                    filepath='/home/repl/workspace/startprocess.txt',
+                    poke_interval=45,
+                    dag=dag)
+
+bash_task = BashOperator(task_id='cleanup_tempfiles', 
+                         bash_command='rm -f /home/repl/*.tmp',
+                         dag=dag)
+
+python_task = PythonOperator(task_id='run_processing', 
+                             python_callable=process_data,
+                             provide_context=True,
+                             dag=dag)
+
+sensor >> bash_task >> python_task
+
+-----------------------------------------------------
+from airflow.models import DAG
+from airflow.contrib.sensors.file_sensor import FileSensor
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python_operator import BranchPythonOperator
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.operators.email_operator import EmailOperator
+from dags.process import process_data
+from datetime import datetime, timedelta
+
+# Update the default arguments and apply them to the DAG.
+
+default_args = {
+  'start_date': datetime(2019,1,1),
+  'sla': timedelta(minutes=90)
+}
+    
+dag = DAG(dag_id='etl_update', default_args=default_args)
+
+sensor = FileSensor(task_id='sense_file', 
+                    filepath='/home/repl/workspace/startprocess.txt',
+                    poke_interval=45,
+                    dag=dag)
+
+bash_task = BashOperator(task_id='cleanup_tempfiles', 
+                         bash_command='rm -f /home/repl/*.tmp',
+                         dag=dag)
+
+python_task = PythonOperator(task_id='run_processing', 
+                             python_callable=process_data,
+                             provide_context=True,
+                             dag=dag)
+
+email_subject="""
+  Email report for {{ params.department }} on {{ ds_nodash }}
+"""
+
+email_report_task = EmailOperator(task_id='email_report_task',
+                                  to='sales@mycompany.com',
+                                  subject=email_subject,
+                                  html_content='',
+                                  params={'department': 'Data subscription services'},
+                                  dag=dag)
+
+no_email_task = DummyOperator(task_id='no_email_task', dag=dag)
+
+def check_weekend(**kwargs):
+    dt = datetime.strptime(kwargs['execution_date'],"%Y-%m-%d")
+    # If dt.weekday() is 0-4, it's Monday - Friday. If 5 or 6, it's Sat / Sun.
+    if (dt.weekday() < 5):
+        return 'email_report_task'
+    else:
+        return 'no_email_task'
+    
+branch_task = BranchPythonOperator(task_id='check_if_weekend',
+                                   python_callable=check_weekend,
+                                   provide_context=True,
+                                   dag=dag)
+
+    
+sensor >> bash_task >> python_task
+
+
+----------------------------------------------------
+repl:~/workspace$ cd /home/repl/workspace/dags
+repl:~/workspace/dags$ python3 pipeline.py
+repl:~/workspace/dags$ cat pipeline.py 
+from airflow.models import DAG
+from airflow.contrib.sensors.file_sensor import FileSensor
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python_operator import BranchPythonOperator
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.operators.email_operator import EmailOperator
+from dags.process import process_data
+from datetime import datetime, timedelta
+
+# Update the default arguments and apply them to the DAG.
+
+default_args = {
+  'start_date': datetime(2019,1,1),
+  'sla': timedelta(minutes=90)
+}
+    
+dag = DAG(dag_id='etl_update', default_args=default_args)
+
+sensor = FileSensor(task_id='sense_file', 
+                    filepath='/home/repl/workspace/startprocess.txt',
+                    poke_interval=45,
+                    dag=dag)
+
+bash_task = BashOperator(task_id='cleanup_tempfiles', 
+                         bash_command='rm -f /home/repl/*.tmp',
+                         dag=dag)
+
+python_task = PythonOperator(task_id='run_processing', 
+                             python_callable=process_data,
+                             provide_context=True,
+                             dag=dag)
+
+email_subject="""
+  Email report for {{ params.department }} on {{ ds_nodash }}
+"""
+
+email_report_task = EmailOperator(task_id='email_report_task',
+                                  to='sales@mycompany.com',
+                                  subject=email_subject,
+                                  html_content='',
+                                  params={'department': 'Data subscription services'},
+                                  dag=dag)
+
+no_email_task = DummyOperator(task_id='no_email_task', dag=dag)
+
+def check_weekend(**kwargs):
+    dt = datetime.strptime(kwargs['execution_date'],"%Y-%m-%d")
+    # If dt.weekday() is 0-4, it's Monday - Friday. If 5 or 6, it's Sat / Sun.
+    if (dt.weekday() < 5):
+        return 'email_report_task'
+    else:
+        return 'no_email_task'
+    
+branch_task = BranchPythonOperator(task_id='check_if_weekend',
+                                   python_callable=check_weekend,
+                                   provide_context=True,
+                                   dag=dag)
+
+    
+sensor >> bash_task >> python_task
+
+python_task >> branch_task >> [email_report_task, no_email_task]
+repl:~/workspace/dags$ 
+
+
