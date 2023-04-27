@@ -18,6 +18,14 @@ When you attach an SCP to an AWS Organizations entity, the policy affects all IA
 
 You can create and manage SCPs from the IAM console. To get started, you need to have AWS Organizations set up for your account, and then you can navigate to the "Service Control Policies" page in the IAM console to create and manage your SCPs.
 
+if you use AWS Control Tower to set up and manage your multi-account AWS environment, then Service Control Policies (SCPs) are automatically created and applied to your accounts.
 
+AWS Control Tower is a service that provides pre-packaged best practices for setting up and governing a secure, compliant, and well-architected multi-account AWS environment. Control Tower automates the creation of a landing zone, which is a secure and well-architected multi-account environment, and sets up the necessary AWS services and configurations to govern your environment.
+
+As part of the landing zone setup process, Control Tower automatically creates a set of default SCPs that are applied to the organizational units (OUs) and accounts in your environment. These SCPs are designed to enforce security and compliance policies, such as restricting access to certain AWS services or requiring multi-factor authentication (MFA) for certain actions.
+
+You can also create custom SCPs in Control Tower to enforce additional policies that are specific to your organization's needs. These custom SCPs can be applied to specific OUs or accounts within your environment to further restrict or allow access to AWS services and actions.
+
+Overall, SCPs are an important tool for managing permissions and enforcing security policies in a multi-account AWS environment, and Control Tower automates the creation and management of SCPs to make it easier to set up and manage a secure and compliant AWS environment.
 
 
