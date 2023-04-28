@@ -2,6 +2,9 @@ Terragrunt is a thin wrapper around Terraform that provides extra functionality 
 
 (https://terragrunt.gruntwork.io/ list 5 benefits--keep your terraform code DRY, your remote state config DRY, CLI flags DRY, execute terraform commands on mutliple modules at once, work with multiple AWS accounts)
 
+![image](https://user-images.githubusercontent.com/31944577/235179081-f3060edf-35e0-43b7-8481-c44e0654866e.png)
+
+
 Modularization: Terragrunt allows you to modularize your Terraform code into reusable modules that can be shared across multiple projects. This helps to avoid duplication of code and simplifies the management of complex deployments.
 
 Remote state management: Terragrunt provides a built-in mechanism for managing Terraform remote state. Remote state allows multiple users to collaborate on the same Terraform deployment and provides a centralized location for storing the state of your infrastructure.
