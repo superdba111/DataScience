@@ -4,7 +4,10 @@ Terragrunt is a thin wrapper around Terraform that provides extra functionality 
 
 ![image](https://user-images.githubusercontent.com/31944577/235179081-f3060edf-35e0-43b7-8481-c44e0654866e.png)
 
-![image](https://user-images.githubusercontent.com/31944577/235183206-46a582de-c0cd-4592-9ee9-ddf88f5568ca.png)
+![image](https://user-images.githubusercontent.com/31944577/235184107-96b020f9-f4fa-43b9-a5e7-d1d1550f8c65.png)
+
+![image](https://user-images.githubusercontent.com/31944577/235184243-693297d9-5192-4fdc-9e2e-d31511332f02.png)
+
 
 
 
