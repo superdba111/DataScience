@@ -1,0 +1,227 @@
+{
+  "runtime": "3.11.9 | packaged by conda-forge | (main, Apr 19 2024, 18:34:54) [Clang 16.0.6 ]",
+  "sqlite": "3.45.3",
+  "sequence": [
+    {
+      "run_id": "20261008T203350-2294604d",
+      "batch_directory": "batch_01",
+      "delivered_at": "2026-08-18T04:05:00Z",
+      "run_status": "succeeded",
+      "files": [
+        {
+          "source_file": "batch_01/day_ahead.csv",
+          "sha256": "0bfc222f3a4a40e86e5fcaca29bef1d7ac00560548aff80bbfcd76559aa1d84d",
+          "rows_read": 11,
+          "previously_ingested_in_run": null
+        },
+        {
+          "source_file": "batch_01/real_time.csv",
+          "sha256": "1ae41b191340559c99a3340bc8e3eb11b4430d059e0a9b8f25476df3359aac31",
+          "rows_read": 50,
+          "previously_ingested_in_run": null
+        }
+      ],
+      "row_counts": {
+        "rows_read": 61,
+        "accepted_new_revision": 57,
+        "stale_revision": 0,
+        "duplicate": 1,
+        "rejected": 3
+      },
+      "rejections_by_reason": {
+        "missing_price": 1,
+        "unknown_hub": 1,
+        "unparseable_interval_end": 1
+      },
+      "state": {
+        "latest_price_rows": 57,
+        "latest_price_rows_by_market": {
+          "DA": 11,
+          "RT": 46
+        },
+        "price_revision_history_rows": 57,
+        "distinct_rejected_source_rows": 3
+      },
+      "data_quality": {
+        "report_status": "incomplete",
+        "hourly_rows": 12,
+        "hours_rt_complete": 10,
+        "hours_da_available": 11,
+        "hours_with_publishable_difference": 9,
+        "gaps": [
+          {
+            "hub_id": "NORTH_HUB",
+            "hour_start_utc": "2026-08-18T01:00:00Z",
+            "issues": [
+              "rt 3/4"
+            ]
+          },
+          {
+            "hub_id": "SOUTH_HUB",
+            "hour_start_utc": "2026-08-18T01:00:00Z",
+            "issues": [
+              "rt 3/4"
+            ]
+          },
+          {
+            "hub_id": "SOUTH_HUB",
+            "hour_start_utc": "2026-08-18T02:00:00Z",
+            "issues": [
+              "da missing"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "run_id": "20261008T203350-da4aef0b",
+      "batch_directory": "batch_02",
+      "delivered_at": "2026-08-18T04:20:00Z",
+      "run_status": "succeeded",
+      "files": [
+        {
+          "source_file": "batch_02/day_ahead.csv",
+          "sha256": "50b50fc6eccdb8ef4feae94b6781911ce8d8184ade37d0463059e74ea2e057e7",
+          "rows_read": 1,
+          "previously_ingested_in_run": null
+        },
+        {
+          "source_file": "batch_02/real_time.csv",
+          "sha256": "265f2711233b8e07535479fa9799773a9bdd319a267388305e95f56bbc6fd9d9",
+          "rows_read": 5,
+          "previously_ingested_in_run": null
+        }
+      ],
+      "row_counts": {
+        "rows_read": 6,
+        "accepted_new_revision": 4,
+        "stale_revision": 0,
+        "duplicate": 2,
+        "rejected": 0
+      },
+      "rejections_by_reason": {},
+      "state": {
+        "latest_price_rows": 59,
+        "latest_price_rows_by_market": {
+          "DA": 11,
+          "RT": 48
+        },
+        "price_revision_history_rows": 61,
+        "distinct_rejected_source_rows": 3
+      },
+      "data_quality": {
+        "report_status": "incomplete",
+        "hourly_rows": 12,
+        "hours_rt_complete": 12,
+        "hours_da_available": 11,
+        "hours_with_publishable_difference": 11,
+        "gaps": [
+          {
+            "hub_id": "SOUTH_HUB",
+            "hour_start_utc": "2026-08-18T02:00:00Z",
+            "issues": [
+              "da missing"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "run_id": "20261008T203350-012096a9",
+      "batch_directory": "batch_02",
+      "delivered_at": "2026-08-18T04:20:00Z",
+      "run_status": "succeeded",
+      "files": [
+        {
+          "source_file": "batch_02/day_ahead.csv",
+          "sha256": "50b50fc6eccdb8ef4feae94b6781911ce8d8184ade37d0463059e74ea2e057e7",
+          "rows_read": 1,
+          "previously_ingested_in_run": "20261008T203350-da4aef0b"
+        },
+        {
+          "source_file": "batch_02/real_time.csv",
+          "sha256": "265f2711233b8e07535479fa9799773a9bdd319a267388305e95f56bbc6fd9d9",
+          "rows_read": 5,
+          "previously_ingested_in_run": "20261008T203350-da4aef0b"
+        }
+      ],
+      "row_counts": {
+        "rows_read": 6,
+        "accepted_new_revision": 0,
+        "stale_revision": 0,
+        "duplicate": 6,
+        "rejected": 0
+      },
+      "rejections_by_reason": {},
+      "state": {
+        "latest_price_rows": 59,
+        "latest_price_rows_by_market": {
+          "DA": 11,
+          "RT": 48
+        },
+        "price_revision_history_rows": 61,
+        "distinct_rejected_source_rows": 3
+      },
+      "data_quality": {
+        "report_status": "incomplete",
+        "hourly_rows": 12,
+        "hours_rt_complete": 12,
+        "hours_da_available": 11,
+        "hours_with_publishable_difference": 11,
+        "gaps": [
+          {
+            "hub_id": "SOUTH_HUB",
+            "hour_start_utc": "2026-08-18T02:00:00Z",
+            "issues": [
+              "da missing"
+            ]
+          }
+        ]
+      },
+      "replay_equal": true
+    }
+  ],
+  "probes": {
+    "unterminated_quote": {
+      "status": "succeeded",
+      "counts": {
+        "rows_read": 1,
+        "accepted_new_revision": 1,
+        "stale_revision": 0,
+        "duplicate": 0,
+        "rejected": 0
+      },
+      "latest_rows": 1,
+      "db_run_status": "succeeded"
+    },
+    "oversized_revision": {
+      "status": "failed",
+      "exception": "OverflowError",
+      "message": "Python int too large to convert to SQLite INTEGER",
+      "latest_rows": 0,
+      "db_run_status": "failed"
+    },
+    "rollback_second_file": {
+      "status": "failed",
+      "exception": "FileLevelError",
+      "message": "/var/folders/vf/gb_gnnpn1y3_6tz4lk5vd42w0000gn/T/tmpek08i3xh/rollback_second_file/batch_01/real_time.csv: unexpected header ['wrong', 'header']",
+      "latest_rows": 0,
+      "db_run_status": "failed"
+    },
+    "export_failure": {
+      "exception": "FileExistsError",
+      "latest_rows": 57,
+      "db_run_status": "succeeded"
+    }
+  },
+  "shuffled_variants": {
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "equal_logical_prices_and_hourly_results": true
+  }
+}

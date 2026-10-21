@@ -1,0 +1,26 @@
+{
+  "scenario": "Market Pulse",
+  "schema_version": 1,
+  "synthetic_data": true,
+  "hubs_file": "hubs.csv",
+  "report_window": {
+    "start_utc": "2026-08-17T22:00:00Z",
+    "end_utc": "2026-08-18T04:00:00Z"
+  },
+  "interval_minutes": {
+    "DA": 60,
+    "RT": 15
+  },
+  "batches": [
+    {
+      "directory": "batch_01",
+      "delivered_at": "2026-08-18T04:05:00Z",
+      "files": ["day_ahead.csv", "real_time.csv"]
+    },
+    {
+      "directory": "batch_02",
+      "delivered_at": "2026-08-18T04:20:00Z",
+      "files": ["day_ahead.csv", "real_time.csv"]
+    }
+  ]
+}

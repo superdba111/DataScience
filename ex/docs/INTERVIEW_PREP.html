@@ -1,0 +1,127 @@
+<html><head><meta charset="utf-8"><title>Market Pulse – Follow-up Interview Prep</title></head><body>
+
+<h1>Market Pulse: Follow-up Interview Prep</h1>
+<p><i>About 40-minute conversation about my own solution. The topics are what works, my choices, limitations, and improvements. Keep answers short (30–60 s), then offer to go deeper.</i></p>
+
+<h2>1. Two-minute opening walkthrough</h2>
+<ol>
+<li><b>Problem:</b> traders need RT vs DA per hub and hour, and they need to know whether they can <i>trust</i> it. The provider re-sends rows, sends late rows and corrections, and some rows are malformed. A run that succeeds can still produce an incomplete report.</li>
+<li><b>Stack:</b> Python 3.11 standard library and SQLite. There are no dependencies, so reviewers can run it in seconds. I chose this on purpose: the data is tiny and the logic is what matters.</li>
+<li><b>Model (3 layers):</b> raw = the original fixture files, unchanged, identified by path, sha256 and line number. History = <code>price_revision</code>, append-only, with primary key (market, hub, interval_start, revision). Curated = <code>latest_price</code>, a view that keeps the highest revision per key. Audit = <code>ingest_run</code>, <code>ingested_file</code> and <code>ingest_row_log</code>, which records an outcome for every input row.</li>
+<li><b>Report:</b> SQL builds a hub × hour grid first, then LEFT JOINs DA and RT. Missing data shows as NULL or count 0, never as a dropped row or a zero price. The difference is published only when RT is 4/4 and DA is present.</li>
+<li><b>Proof:</b> <code>scripts/run_demo.sh</code> runs empty → batch_01 → batch_02 → batch_02 replay and diffs the results. Replay leaves the data byte-identical. 12 unit tests pass, and every public example and row count matches.</li>
+<li><b>AWS:</b> S3 → SQS → Lambda → Aurora PostgreSQL Serverless v2, with one transaction per file, plus a scheduled completeness checker that separates "vendor late" from "pipeline late".</li>
+</ol>
+
+<h2>2. Numbers to have ready</h2>
+<table border="1" cellpadding="4">
+<tr><th>State</th><th>Rows read</th><th>Accepted / Dup / Rejected</th><th>Latest (DA+RT)</th><th>Publishable diffs</th></tr>
+<tr><td>batch_01</td><td>61 (11 DA + 50 RT)</td><td>57 / 1 / 3</td><td>57 (11+46)</td><td>9 / 12</td></tr>
+<tr><td>batch_02</td><td>6</td><td>4 / 2 / 0</td><td>59 (11+48)</td><td>11 / 12</td></tr>
+<tr><td>replay batch_02</td><td>6</td><td>0 / 6 / 0</td><td>59</td><td>11 / 12 (unchanged)</td></tr>
+</table>
+<p><b>Batch 1 rejections:</b> blank price (SOUTH RT, interval ending 01:30), unknown hub (HUB_UNKNOWN), and an unparseable timestamp ("not-a-timestamp"). <b>Duplicate:</b> NORTH RT ending 22:30, line 49. <b>Missing:</b> NORTH RT ending 01:45, which arrives in batch 2. <b>DA absent permanently:</b> SOUTH, hour starting 02:00.</p>
+<p><b>Batch 2:</b> NORTH 00:45Z rev 2 = 62 (the correction, written with a −05:00 offset), sent twice. NORTH 01:45 = 46 (the late interval). SOUTH 01:30Z rev 2 = 40 (repairs the blank-price row). DA SOUTH hour 23:00 rev 2 = 32 (DA correction). NORTH 00:45 rev 1 = 42 (old version after the new one; it is a duplicate of batch 1 and is labelled "older than current revision 2").</p>
+<p><b>Key results:</b> NORTH 00:00 changes from 41/diff 1 to 46/diff 6. NORTH 01:00 changes from 44.666667 (3/4, null diff) to 45 (diff 0). SOUTH 00:00 is −2.5/−37.5 (negative prices are valid). SOUTH 02:00 has RT 47 at 4/4, DA null, diff null. SOUTH 03:00 has a 500 spike, giving mean 163 and diff 113. It is kept and not capped.</p>
+
+<h2>3. Likely questions and my answers</h2>
+
+<h3>Data modeling and time handling (30%)</h3>
+<p><b>Q: Why key on interval start rather than interval end?</b><br>
+The contract defines the hour by interval start. If you bucket by end, the RT interval ending 00:00 lands in the 00:00 hour, which is wrong: it belongs to 23:00. I compute start = UTC(end) − duration at validation time and store it, so SQL never repeats the arithmetic. Test: <code>test_rt_interval_ending_on_the_hour_belongs_to_previous_hour</code>.</p>
+
+<p><b>Q: How do you handle −05:00 vs Z?</b><br>
+<code>datetime.fromisoformat</code> parses the offset, I reject timestamps without one (<code>naive_interval_end</code>), convert to UTC, and store canonical text <code>YYYY-MM-DDTHH:MM:SSZ</code>. Every equivalent representation then collapses to one key, and string order equals time order in SQLite.</p>
+
+<p><b>Q: Why a history table plus a view instead of UPSERT into one table?</b><br>
+(1) Lineage: I can explain every correction (rev 1 came from file A line 12, rev 2 from file B line 2). (2) Correctness by construction: "latest" is <i>derived</i> as max(revision), so neither delivery order nor a replay can undo a correction. (3) It allows as-of queries later. At production scale I'd maintain <code>latest_price</code> as a table, updated in the same transaction with a <code>WHERE excluded.revision &gt; current.revision</code> guard.</p>
+
+<p><b>Q: Why validate before choosing the winner?</b><br>
+If the blank-price rev 1 competed, a later invalid rev 3 could knock out a valid rev 2. Only valid rows enter <code>price_revision</code>, and rejected rows live in the log with a reason.</p>
+
+<p><b>Q: Why not use published_at to pick the latest?</b><br>
+The contract says revision is authoritative. Publication clocks can be skewed and replays carry old timestamps. I keep published_at for audit.</p>
+
+<p><b>Q: Same key and revision, different price?</b><br>
+It's out of scope, but I reject it as <code>conflicting_revision</code> and keep the first value instead of silently overwriting. In production that triggers an alarm and a conversation with the vendor.</p>
+
+<h3>Implementation, repeatability, tests (25%)</h3>
+<p><b>Q: How is replay idempotent?</b><br>
+Primary key (market, hub, interval_start, revision). A row whose key, revision and value are already stored is a <code>duplicate</code> and nothing is written. The demo diffs the hourly CSV and the latest-price CSV after the replay, and both are unchanged. Only run IDs and logs differ.</p>
+
+<p><b>Q: What if the process crashes mid-batch?</b><br>
+One run is one SQLite transaction (explicit BEGIN/COMMIT). On an exception it rolls back, marks the run <code>failed</code> with the error, and exits with code 2. Re-running is safe. Test: <code>test_bad_header_fails_run_and_rolls_back</code>.</p>
+
+<p><b>Q: How do you avoid reading batch_02 while processing batch_01?</b><br>
+The CLI takes <code>--batch</code> and reads only the files that the batch's manifest entry in scenario.json lists, joined with pathlib.</p>
+
+<p><b>Q: How did you count replays?</b><br>
+Per run: rows_read, accepted_new_revision, stale_revision, duplicate, rejected. A replay shows 6 duplicates. Each file also reports <code>previously_ingested_in_run</code> by sha256, so an operator can see the whole file was re-sent.</p>
+
+<p><b>Q: Which tests matter most?</b><br>
+Time bucketing at the hour boundary. Grid with nulls (not zeros) and the partial-hour mean. Complete RT without DA giving no difference. Older revision arriving later doesn't win. Offset-equivalent duplicates. Replay idempotency. A rejected row that is repaired later stays in history. File-level failure rolls back. Plus an end-to-end test against the public examples.</p>
+
+<h3>Data trust and observability (15%)</h3>
+<p><b>Q: How does a trader know whether to trust a number?</b><br>
+Every row carries rt_intervals_present/expected, rt_complete and da_available, and the difference is null unless the inputs are complete. The run summary has <code>run_status</code> (did the pipeline work) separate from <code>report_status</code> + <code>gaps</code> (is the data complete). Lineage columns trace each price back to file, line, sha and run.</p>
+
+<p><b>Q: Why show an RT mean for an incomplete hour?</b><br>
+The contract allows it, and it's informative. The incomplete flag and the null difference stop anyone from using it as a comparison.</p>
+
+<h3>AWS architecture (20%)</h3>
+<p><b>Q: Why Aurora PostgreSQL rather than Athena/Iceberg?</b><br>
+The workload is small frequent writes (96 files a day, about 2–3k rows each) and narrow reads (one hub, 1–7 days). Postgres handles that with an index lookup in milliseconds, a transactional upsert, and <code>ON CONFLICT</code>. Iceberg would need compaction and snapshot expiry, MERGE conflicts during correction storms, and multi-second Athena latency. I'd revisit at multi-TB scale, with heavy cross-hub analytics, or if as-of time travel becomes a requirement. The first step would be a hybrid with a nightly Iceberg export.</p>
+
+<p><b>Q: Sizing?</b><br>
+240k prices a day × 730 days ≈ 175M logical rows, plus revisions. That is roughly 30–50 GB with indexes, comfortably within Aurora. Monthly partitions on interval_start make 2-year retention a partition drop.</p>
+
+<p><b>Q: How do you meet the 5-minute freshness target?</b><br>
+The S3 event reaches SQS and then Lambda in seconds, and processing a file takes seconds. Processing lag = committed_at − landed_at is emitted as a metric with an alarm.</p>
+
+<p><b>Q: Vendor late vs pipeline late?</b><br>
+Vendor lag = now − last landed object, or missing expected intervals while no files are arriving. Pipeline lag = SQS AgeOfOldestMessage, DLQ depth, and committed − landed. If files are landed but not committed, the pipeline is at fault. If nothing has landed, the vendor is.</p>
+
+<p><b>Q: Security separation?</b><br>
+The vendor role can only PutObject to <code>landing/</code>. The ingest Lambda role can read landing and write to the DB through IAM auth. Traders get SSO, a read-only DB role, and SELECT on report views only, with no access to raw S3. KMS encryption at rest, TLS in transit, private subnets, VPC endpoints, and no NAT. Future vendor credentials go in Secrets Manager with rotation, and CloudTrail data events are on for the bucket.</p>
+
+<p><b>Q: Failure and recovery example?</b><br>
+A 14-day correction file makes the Lambda time out at 60%. The single transaction rolls back, so traders never see a half-corrected day. SQS redelivers the message, and after 3 failures it goes to the DLQ and raises an alarm. The runbook: fix the cause (timeout, or split into chunks), then redrive. That is safe because writes are idempotent. For a bug that corrupts curated data, replay raw S3 files in landing order.</p>
+
+<p><b>Q: What's the biggest cost and what did you avoid?</b><br>
+Aurora ACU-hours. I avoided Redshift, EMR/Glue Spark, Kinesis, MWAA and a NAT Gateway, and set CloudWatch log retention. If Aurora's minimum capacity dominates the bill, compare it with a reserved small RDS instance.</p>
+
+<h3>Limitations and judgment (10%)</h3>
+<ul>
+<li>The view-based <code>latest_price</code> is fine at fixture scale. At scale it becomes a maintained table.</li>
+<li>No as-of query yet, although the history table enables one.</li>
+<li>Only the first failing validation reason is reported per row.</li>
+<li>No lateness metric locally. <code>delivered_at</code> is recorded per run.</li>
+<li>Single writer (SQLite). Concurrent writers are out of scope.</li>
+</ul>
+<p><b>Next hour:</b> a <code>--fail-on-incomplete</code> exit code; an <code>explain hub hour</code> command showing every revision and rejection behind a number; a per-interval lateness metric; a shuffle-order property test.</p>
+
+<h2>4. Live-modification drills (practice these)</h2>
+<table border="1" cellpadding="4">
+<tr><th>They might ask</th><th>Where to change</th></tr>
+<tr><td>Change RT to 5-minute intervals</td><td><code>scenario.json</code> interval_minutes.RT = 5. rt_expected = 60/5 = 12 is already derived in <code>hourly_report()</code>, and alignment validation uses the same config. No SQL change.</td></tr>
+<tr><td>Add a third hub</td><td>Add a row to <code>hubs.csv</code>. The grid comes from the <code>hub</code> table, so the new hub gets rows with NULLs automatically.</td></tr>
+<tr><td>Reject corrections older than 14 days</td><td>In <code>_apply_row</code>, compare interval_start with the batch's <code>delivered_at</code> and return a new outcome such as <code>rejected / correction_window_expired</code>, or accept with a warning. Add a test.</td></tr>
+<tr><td>Show which revision is used in the report</td><td>In <code>hourly_report.sql</code>, add <code>MAX(source_revision)</code> to the rt CTE and the DA revision to the select.</td></tr>
+<tr><td>"What did we know at 04:10?"</td><td>Add <code>ingested_at</code> to <code>price_revision</code> (or join <code>first_run_id</code> to <code>ingest_run.finished_at</code>), then compute latest with <code>WHERE run finished &lt;= :as_of</code> before ROW_NUMBER.</td></tr>
+<tr><td>Fail the job when the report is incomplete</td><td><code>main()</code>: if <code>data_quality.report_status == 'incomplete'</code> and the flag is set, return 3. Keep this distinct from 2 (file failure).</td></tr>
+<tr><td>Show all rejected rows</td><td><code>sqlite3 out/state.db "select * from rejected_record"</code></td></tr>
+<tr><td>Explain NORTH 00:00 changing from 41 to 46</td><td><code>select * from price_revision where hub_id='NORTH_HUB' and interval_start_utc='2026-08-18T00:30:00Z'</code> returns rev 1 = 42 (batch_01 line 12) and rev 2 = 62 (batch_02 line 2).</td></tr>
+</table>
+
+<h2>5. Questions to ask them</h2>
+<ul>
+<li>How do traders consume this data today (BI tool, Excel, notebooks)? What does "trust" mean to them in practice?</li>
+<li>How often does the real vendor reuse revision numbers or send corrections beyond 14 days?</li>
+<li>Is there a need for as-of or audit views for compliance or P&amp;L explain?</li>
+<li>What is the team's current AWS data stack (lakehouse vs RDS), and how do on-call and runbooks work?</li>
+</ul>
+
+<h2>6. AI-assistance disclosure (if asked)</h2>
+<p>I used Claude Code to help draft code, tests and docs. I verified the output by reading every module, running the 12 tests, running the 3-step demo with diff checks, and checking every public row count and example from DATA_CONTRACT.md by hand. I can explain and modify any line.</p>
+
+</body></html>

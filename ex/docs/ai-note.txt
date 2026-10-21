@@ -1,0 +1,1 @@
+I used Claude Code to help draft code, tests and docs, and Codex to review it independently. I verified the output by reading every module, running the 17 tests, running the 3-step demo with diff checks, and checking every public row count and example from DATA_CONTRACT.md by hand.

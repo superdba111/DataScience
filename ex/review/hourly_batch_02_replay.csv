@@ -1,0 +1,13 @@
+hub_id,hour_start_utc,da_price_usd_per_mwh,rt_mean_usd_per_mwh,rt_minus_da_usd_per_mwh,rt_intervals_present,rt_intervals_expected,rt_complete,da_available
+NORTH_HUB,2026-08-17T22:00:00Z,30.0,31.0,1.0,4,4,true,true
+NORTH_HUB,2026-08-17T23:00:00Z,35.0,37.0,2.0,4,4,true,true
+NORTH_HUB,2026-08-18T00:00:00Z,40.0,46.0,6.0,4,4,true,true
+NORTH_HUB,2026-08-18T01:00:00Z,45.0,45.0,0.0,4,4,true,true
+NORTH_HUB,2026-08-18T02:00:00Z,50.0,51.0,1.0,4,4,true,true
+NORTH_HUB,2026-08-18T03:00:00Z,55.0,55.0,0.0,4,4,true,true
+SOUTH_HUB,2026-08-17T22:00:00Z,25.0,27.0,2.0,4,4,true,true
+SOUTH_HUB,2026-08-17T23:00:00Z,32.0,31.0,-1.0,4,4,true,true
+SOUTH_HUB,2026-08-18T00:00:00Z,35.0,-2.5,-37.5,4,4,true,true
+SOUTH_HUB,2026-08-18T01:00:00Z,40.0,41.0,1.0,4,4,true,true
+SOUTH_HUB,2026-08-18T02:00:00Z,,47.0,,4,4,true,false
+SOUTH_HUB,2026-08-18T03:00:00Z,50.0,163.0,113.0,4,4,true,true
